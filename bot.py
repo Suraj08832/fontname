@@ -2992,7 +2992,7 @@ def bio_styles_handler(update, chat_id, text):
         reply_markup=reply_markup
     )
 
-def keepalive_thread(api_token):
+def keepalive_thread(token):
     """Monitor bot activity and keep it alive"""
     last_activity = time.time()
     check_interval = 120  # Check every 2 minutes
@@ -3005,7 +3005,7 @@ def keepalive_thread(api_token):
                 
                 # Try to get bot info to check if it's responsive
                 response = requests.get(
-                    f"https://api.telegram.org/bot{api_token}/getMe",
+                    f"https://api.telegram.org/bot{token}/getMe",
                     timeout=10
                 )
                 
@@ -3032,6 +3032,9 @@ def main():
     print(f"Process ID: {os.getpid()}")
     
     try:
+        # Get TOKEN from environment or default
+        api_token = os.environ.get('TOKEN', TOKEN)
+        
         # Start HTTP server in a separate thread for Render
         print("\nStarting HTTP server...")
         server_thread = threading.Thread(target=run_http_server)
@@ -3048,13 +3051,13 @@ def main():
         
         # Start keepalive thread
         print("\nStarting keepalive thread...")
-        keepalive = threading.Thread(target=keepalive_thread, args=(API_TOKEN,), daemon=True)
+        keepalive = threading.Thread(target=keepalive_thread, args=(api_token,), daemon=True)
         keepalive.start()
         print("Keepalive thread started successfully")
         
         # Initialize bot
         print("\nInitializing bot...")
-        application = Application.builder().token(API_TOKEN).build()
+        application = Application.builder().token(api_token).build()
         
         # Add handlers
         print("\nRegistering command handlers...")
