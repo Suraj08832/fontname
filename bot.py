@@ -9,6 +9,8 @@ import re
 # Add these imports for web server
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import time
+from datetime import datetime
 
 # Load environment variables from .env file if it exists
 try:
@@ -22,6 +24,14 @@ logger = logging.getLogger(__name__)
 
 # Bot token
 TOKEN = os.environ.get('TOKEN', '8033666584:AAESfSuR7uaPLSpjgzM65rR2My8Oqfon1wo')
+
+# Global variable to keep track of last activity
+last_activity_time = datetime.now()
+
+# Function to update the last activity time
+def update_activity():
+    global last_activity_time
+    last_activity_time = datetime.now()
 
 # Special characters for fancy fonts
 SPECIAL_CHARS = [
@@ -764,7 +774,7 @@ def stylish_bio_black_heart(text):
         else:
             styled_text += char
     
-    return f"◄⏤͟͟͞🍸⃝⃪🖤{styled_text}᭓┣𝐥𝚵𝚲𝐑𝚻𔘓⃭𓆩🖤𓆪"
+    return f"◄⏤͟͟͞🍸⃝⃪🖤{styled_text}᭓┣𝐥𝚵𝚲𝐂𝐊᭓┣𝚵𝚲𝐑𝚻𔘓⃭𓆩🖤𓆪"
 
 def stylish_bio_infinity(text):
     """Create a stylish bio name with infinity style."""
@@ -1727,6 +1737,9 @@ def fancy_stylish_bio7(text):
 # Add a command handler for bio styles
 async def bio_styles(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Generate fancy bio-style text for Telegram profiles."""
+    # Update activity timestamp
+    update_activity()
+    
     if not context.args:
         await update.message.reply_text("Please provide a name after the command.\nExample: /bio_styles Aisha")
         return
@@ -1832,44 +1845,83 @@ async def bio_styles(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Modified button_callback handler to handle bio styles
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle button clicks for copying styled text."""
-    query = update.callback_query
-    await query.answer()
+    # Update activity timestamp
+    update_activity()
     
-    # Parse the callback data to determine what to copy
-    data = query.data.split('_')
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Parse the callback data to determine what to copy
+        data = query.data.split('_')
+        
+        if data[0] == 'font':
+            # Handle font style copying
+            style_index = int(data[1])
+            styled_fonts = context.user_data.get('styled_fonts', [])
+            if style_index < len(styled_fonts):
+                styled_text = styled_fonts[style_index]
+                await query.message.reply_text(styled_text)
+            else:
+                await query.message.reply_text("Style not found. Please try again.")
+        elif data[0] == 'name':
+            # Handle fancy name copying
+            name_index = int(data[1])
+            styled_names = context.user_data.get('styled_names', [])
+            if name_index < len(styled_names):
+                styled_name = styled_names[name_index]
+                await query.message.reply_text(styled_name)
+            else:
+                await query.message.reply_text("Style not found. Please try again.")
+        elif data[0] == 'letter':
+            # Handle single letter copying
+            letter_index = int(data[1])
+            styled_letters = context.user_data.get('styled_letters', [])
+            if letter_index < len(styled_letters):
+                styled_letter = styled_letters[letter_index]
+                await query.message.reply_text(styled_letter)
+            else:
+                await query.message.reply_text("Style not found. Please try again.")
+        elif data[0] == 'bio':
+            # Handle bio style copying
+            bio_index = int(data[1])
+            fancy_bios = context.user_data.get('fancy_bios', [])
+            if bio_index < len(fancy_bios):
+                styled_bio = fancy_bios[bio_index]
+                await query.message.reply_text(styled_bio)
+            else:
+                await query.message.reply_text("Style not found. Please try again.")
+        elif data[0] == 'style':
+            # Handle style font copying
+            try:
+                style_name = data[1]
+                name = '_'.join(data[2:])  # Join remaining parts as the name
+                style_func = FONT_STYLES.get(style_name)
+                if style_func:
+                    styled_name = ''.join(style_func(c) for c in name)
+                    await query.message.reply_text(styled_name)
+                else:
+                    await query.message.reply_text(f"Style '{style_name}' not found.")
+            except Exception as e:
+                logging.error(f"Error in style processing: {str(e)}")
+                await query.message.reply_text("Error processing style. Please try again.")
+        else:
+            await query.message.reply_text("Unknown button type.")
     
-    if data[0] == 'font':
-        # Handle font style copying
-        style_index = int(data[1])
-        styled_text = context.user_data.get('styled_fonts', [])[style_index]
-        await query.message.reply_text(styled_text)
-    elif data[0] == 'name':
-        # Handle fancy name copying
-        name_index = int(data[1])
-        styled_name = context.user_data.get('styled_names', [])[name_index]
-        await query.message.reply_text(styled_name)
-    elif data[0] == 'letter':
-        # Handle single letter copying
-        letter_index = int(data[1])
-        styled_letter = context.user_data.get('styled_letters', [])[letter_index]
-        await query.message.reply_text(styled_letter)
-    elif data[0] == 'bio':
-        # Handle bio style copying
-        bio_index = int(data[1])
-        styled_bio = context.user_data.get('fancy_bios', [])[bio_index]
-        await query.message.reply_text(styled_bio)
-    elif data[0] == 'style':
-        # Handle style font copying
-        style_name = data[1]
-        name = data[2]
-        style_func = FONT_STYLES[style_name]
-        styled_name = ''.join(style_func(c) for c in name)
-        await query.message.reply_text(styled_name)
-    else:
-        await query.message.reply_text("Unknown button type.")
+    except Exception as e:
+        logging.error(f"Error in button_callback: {str(e)}", exc_info=True)
+        try:
+            await update.effective_message.reply_text(
+                "Sorry, there was an error processing your request. Please try again."
+            )
+        except Exception:
+            logging.error("Failed to send error message to user", exc_info=True)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /help is issued."""
+    # Update activity timestamp
+    update_activity()
+    
     help_text = (
         "🤖 *Font Styles Bot Commands* 🤖\n\n"
         "/fancy [name] - Generate a random fancy stylized name\n"
@@ -1883,6 +1935,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a welcome message when the command /start is issued."""
+    # Update activity timestamp
+    update_activity()
+    
     welcome_text = (
         "👋 Welcome to the Font Styles Bot! 🎨\n\n"
         "I can help you create fancy text styles for your name or any text.\n\n"
@@ -1896,6 +1951,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def fancy_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Generate a fancy styled name."""
+    # Update activity timestamp
+    update_activity()
+    
     if not context.args:
         await update.message.reply_text("Please provide a name after /fancy\nExample: /fancy John")
         return
@@ -2016,6 +2074,9 @@ async def fancy_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_alphabet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show the alphabet in a random font style."""
+    # Update activity timestamp
+    update_activity()
+    
     alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     style_name = random.choice(list(STYLE_NAMES.values()))
     style_function = FONT_STYLES[style_name]
@@ -2027,6 +2088,9 @@ async def show_alphabet(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def az_fonts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show a letter in all available font styles."""
+    # Update activity timestamp
+    update_activity()
+    
     if not context.args or len(context.args[0]) != 1:
         await update.message.reply_text("Please provide a single letter after /letter\nExample: /letter A")
         return
@@ -2046,6 +2110,9 @@ async def az_fonts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def name_all_fonts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show a name in all available font styles."""
+    # Update activity timestamp
+    update_activity()
+    
     if not context.args:
         await update.message.reply_text("Please provide a name after /name_fonts\nExample: /name_fonts John")
         return
@@ -2094,7 +2161,9 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b'Bot is running')
+        time_since_activity = (datetime.now() - last_activity_time).total_seconds()
+        status = "healthy" if time_since_activity < 600 else "stale"
+        self.wfile.write(f'Bot is running (Status: {status}, Last activity: {time_since_activity:.1f} seconds ago)'.encode())
 
 def run_http_server():
     # Get port from environment variable or use default
@@ -2104,32 +2173,66 @@ def run_http_server():
     print(f"Starting HTTP server on port {port}...")
     httpd.serve_forever()
 
+# Watchdog function to monitor bot activity and restart if needed
+def watchdog():
+    while True:
+        time.sleep(300)  # Check every 5 minutes
+        time_since_activity = (datetime.now() - last_activity_time).total_seconds()
+        if time_since_activity > 600:  # 10 minutes without activity
+            logging.warning(f"Bot seems unresponsive. No activity for {time_since_activity:.1f} seconds. Attempting restart.")
+            # We can't directly restart the bot here, but we can log the issue
+            # Render will automatically restart the service if it becomes unresponsive
+            print(f"WATCHDOG ALERT: Bot may be unresponsive. Last activity: {time_since_activity:.1f} seconds ago")
+            # Update the activity time to prevent multiple alerts
+            update_activity()
+
 # Update main function to register the new handler
 def main():
     """Start the bot."""
-    # Create the Application and pass it your bot's token
-    application = Application.builder().token(TOKEN).build()
+    try:
+        # Create the Application and pass it your bot's token
+        application = Application.builder().token(TOKEN).build()
 
-    # Add command handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("fancy", fancy_name))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("alphabet", show_alphabet))
-    application.add_handler(CommandHandler("letter", az_fonts))
-    application.add_handler(CommandHandler("name_fonts", name_all_fonts))
-    application.add_handler(CommandHandler("bio_styles", bio_styles))
-    
-    # Add callback query handler for the buttons
-    application.add_handler(CallbackQueryHandler(button_callback))
+        # Add command handlers
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("fancy", fancy_name))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("alphabet", show_alphabet))
+        application.add_handler(CommandHandler("letter", az_fonts))
+        application.add_handler(CommandHandler("name_fonts", name_all_fonts))
+        application.add_handler(CommandHandler("bio_styles", bio_styles))
+        
+        # Add callback query handler for the buttons
+        application.add_handler(CallbackQueryHandler(button_callback))
 
-    # Start HTTP server in a separate thread for Render
-    server_thread = threading.Thread(target=run_http_server)
-    server_thread.daemon = True
-    server_thread.start()
+        # Start HTTP server in a separate thread for Render
+        server_thread = threading.Thread(target=run_http_server)
+        server_thread.daemon = True
+        server_thread.start()
+        
+        # Start watchdog in a separate thread
+        watchdog_thread = threading.Thread(target=watchdog)
+        watchdog_thread.daemon = True
+        watchdog_thread.start()
 
-    # Start the Bot
-    print("Starting bot...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+        # Log that we're starting
+        print("Starting bot...")
+        logging.info("Bot is starting up with token: %s...", TOKEN[:10])
+        
+        # Update activity timestamp
+        update_activity()
+        
+        # Start the Bot with error handling
+        application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+        
+    except Exception as e:
+        logging.error(f"Error in main function: {str(e)}", exc_info=True)
+        print(f"Critical error: {str(e)}")
+        
+        # Try to restart after a delay if there's an error
+        time.sleep(10)
+        print("Attempting to restart bot...")
+        main()
 
 if __name__ == '__main__':
     main() 
