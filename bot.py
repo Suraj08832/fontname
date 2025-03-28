@@ -2504,19 +2504,12 @@ def run_bot():
                                             style_num = int(parts[1])
                                             user_chat_id = int(parts[2])
                                             
+                                            # Get the original name from stored data
+                                            name = "Example"  # Default fallback
+                                            if user_chat_id in user_message_data and 'name' in user_message_data[user_chat_id]:
+                                                name = user_message_data[user_chat_id]['name']
+                                            
                                             if style_num in STYLE_NAMES:
-                                                # Get the latest message from this user to extract the name
-                                                if 'reply_to_message' in callback_query['message']:
-                                                    original_text = callback_query['message']['reply_to_message'].get('text', '')
-                                                    
-                                                    # Try to extract name from original message
-                                                    if ' ' in original_text:
-                                                        name = original_text.split(' ', 1)[1]
-                                                    else:
-                                                        name = "Example"
-                                                else:
-                                                    name = "Example"  # Default name if we can't find the original
-                                                
                                                 # Get the style name and function
                                                 style_name = STYLE_NAMES[style_num]
                                                 style_func = FONT_STYLES[style_name]
@@ -2537,6 +2530,21 @@ def run_bot():
                                                 send_message(chat_id, "Style not found. Please try again.")
                                         except Exception as e:
                                             print(f"Error processing style callback: {e}")
+                                            send_message(chat_id, "Error processing request. Please try again.")
+                                    
+                                    elif parts[0] == 'bio' and len(parts) > 2:
+                                        # Format: bio_index_chat_id
+                                        try:
+                                            bio_index = int(parts[1])
+                                            user_chat_id = int(parts[2])
+                                            
+                                            if user_chat_id in user_styled_names and bio_index < len(user_styled_names[user_chat_id]):
+                                                styled_name = user_styled_names[user_chat_id][bio_index]
+                                                send_message(chat_id, styled_name)
+                                            else:
+                                                send_message(chat_id, "Bio style not found. Please try again.")
+                                        except Exception as e:
+                                            print(f"Error processing bio callback: {e}")
                                             send_message(chat_id, "Error processing request. Please try again.")
                                 except Exception as e:
                                     print(f"Error processing callback query: {e}")
@@ -2657,8 +2665,9 @@ def answer_callback_query(callback_query_id, text=None, show_alert=False):
         traceback.print_exc()
         return None
 
-# Dictionary to store styled names for users
+# Dictionary to store styled names for users and original messages
 user_styled_names = {}
+user_message_data = {}  # Store original names and other context data
 
 def fancy_handler(update, chat_id, text):
     """Handle /fancy command with buttons for various styled names."""
@@ -2668,6 +2677,9 @@ def fancy_handler(update, chat_id, text):
         return
     
     name = parts[1]
+    
+    # Store the original name for this user
+    user_message_data[chat_id] = {'command': 'fancy', 'name': name}
     
     # Generate multiple fancy names
     fancy_names = []
@@ -2749,6 +2761,9 @@ def name_fonts_handler(update, chat_id, text):
         return
     
     name = parts[1]
+    
+    # Store the original name for this user
+    user_message_data[chat_id] = {'command': 'name_fonts', 'name': name}
     
     # Generate styled names for all available font styles
     buttons = []
@@ -2855,38 +2870,62 @@ def alphabet_handler(update, chat_id, text):
     send_message(chat_id, response)
 
 def bio_styles_handler(update, chat_id, text):
-    """Handle /bio_styles command."""
+    """Handle /bio_styles command with buttons."""
     parts = text.split(' ', 1)
     if len(parts) < 2:
         send_message(chat_id, "Please provide a name after /bio_styles\nExample: /bio_styles John")
         return
     
     name = parts[1]
-    response = "Fancy bio styles for your name:\n\n"
+    
+    # Store the original name for this user
+    user_message_data[chat_id] = {'command': 'bio_styles', 'name': name}
     
     # List of bio style functions
     bio_styles = [
-        stylish_bio_accent,
-        stylish_bio_butterfly,
-        stylish_bio_premium,
-        stylish_bio_special,
-        stylish_bio_infinity,
-        stylish_bio_crystal,
-        stylish_bio_royal,
-        stylish_bio_angel,
-        stylish_bio_diamond_crown,
-        stylish_bio_shadow
+        # Core bio styles
+        stylish_bio_accent, stylish_bio_butterfly, stylish_bio_premium, stylish_bio_special,
+        stylish_bio_infinity, stylish_bio_crystal, stylish_bio_royal, stylish_bio_angel,
+        stylish_bio_diamond_crown, stylish_bio_shadow, stylish_bio_heart, stylish_bio_clone,
+        # More bio styles
+        stylish_bio_sanatan, stylish_bio_anjali, stylish_bio_misty, stylish_bio_joker,
+        stylish_bio_prashant, stylish_bio_innocent, stylish_bio_isi_u, stylish_bio_miss,
+        stylish_bio_prachi, stylish_bio_jasmine, stylish_bio_dark, stylish_bio_viskl,
+        stylish_bio_black_heart, stylish_bio_abstract, stylish_bio_arrow_style, stylish_bio_waves,
+        stylish_bio_neon, stylish_bio_gaming, stylish_bio_fire_ice, stylish_bio_cute
     ]
     
-    # Generate styles
+    # Generate styles and create buttons
+    styled_names = []
+    buttons = []
+    
     for i, style_func in enumerate(bio_styles):
         try:
             styled_name = style_func(name)
-            response += f"{i+1}. {styled_name}\n\n"
-        except Exception:
+            styled_names.append(styled_name)
+            
+            # Create a button with preview
+            preview = styled_name[:10] + "..." if len(styled_name) > 10 else styled_name
+            button_text = f"{i+1}. {preview}"
+            
+            # Add to buttons list - use 'bio' prefix to distinguish from font styles
+            buttons.append((button_text, f"bio_{i}_{chat_id}"))
+        except Exception as e:
+            print(f"Error generating bio style {style_func.__name__}: {e}")
             continue
     
-    send_message(chat_id, response)
+    # Store the styled names for this user
+    user_styled_names[chat_id] = styled_names
+    
+    # Create inline keyboard with 4 buttons per row
+    reply_markup = create_inline_keyboard(buttons, rows_of=4)
+    
+    # Send message with inline keyboard
+    send_message(
+        chat_id,
+        f"Choose a bio style for '{name}':",
+        reply_markup=reply_markup
+    )
 
 def main():
     """Start the bot."""
