@@ -3038,6 +3038,13 @@ def main():
             raise ValueError("No API token found in environment variables or default TOKEN")
         print("API token loaded successfully")
         
+        # Test API connection
+        print("\nTesting API connection...")
+        response = requests.get(f"https://api.telegram.org/bot{api_token}/getMe", timeout=10)
+        if response.status_code != 200:
+            raise ValueError(f"Failed to connect to Telegram API: {response.text}")
+        print("API connection successful")
+        
         # Start HTTP server in a separate thread for Render
         print("\nStarting HTTP server...")
         server_thread = threading.Thread(target=run_http_server)
@@ -3088,9 +3095,11 @@ def main():
         
         # Start polling with error handling
         try:
+            print("\nStarting polling...")
             application.run_polling(allowed_updates=Update.ALL_TYPES)
         except Exception as e:
             print(f"Error during polling: {str(e)}")
+            traceback.print_exc()
             raise
         
     except Exception as e:

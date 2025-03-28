@@ -40,9 +40,18 @@ get_bot_logs() {
     if [ -f bot.log ]; then
         echo "=== Bot Logs ==="
         cat bot.log
+        echo "=== End of Bot Logs ==="
     else
         echo "No bot.log file found"
     fi
+}
+
+# Function to check Python environment
+check_python_env() {
+    echo "Checking Python environment..."
+    python -c "import telegram; print('python-telegram-bot version:', telegram.__version__)"
+    python -c "import requests; print('requests version:', requests.__version__)"
+    python -c "import sys; print('Python path:', sys.path)"
 }
 
 # Restart loop
@@ -59,8 +68,12 @@ while [ $restart_count -lt $MAX_RESTARTS ]; do
     echo "=== Starting bot (attempt $((restart_count+1))/$MAX_RESTARTS) ==="
     echo "Current time: $(date)"
     
+    # Check Python environment before starting
+    check_python_env
+    
     # Start the bot in the background and capture its PID
-    python bot.py > bot.log 2>&1 &
+    # Use python -u to disable output buffering
+    python -u bot.py > bot.log 2>&1 &
     BOT_PID=$!
     
     # Wait a few seconds to see if the bot starts properly
@@ -72,6 +85,16 @@ while [ $restart_count -lt $MAX_RESTARTS ]; do
         echo "Waiting for logs to be generated..."
         sleep 2
         get_bot_logs
+        
+        # Monitor the bot for a while to ensure it stays running
+        for i in {1..3}; do
+            sleep 5
+            if ! check_bot_status; then
+                echo "Bot stopped unexpectedly after $((i*5)) seconds"
+                get_bot_logs
+                break
+            fi
+        done
     else
         echo "Bot failed to start properly"
         get_bot_logs
