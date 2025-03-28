@@ -3,7 +3,7 @@ import os
 import random
 import string
 import unicodedata
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import re
 # Add these imports for web server
@@ -15,6 +15,8 @@ import sys
 import traceback
 import concurrent.futures
 import asyncio
+import httpx
+import requests
 
 # Load environment variables from .env file if it exists
 try:
@@ -2293,158 +2295,243 @@ def watchdog():
             logging.error(f"Error in watchdog thread: {str(e)}", exc_info=True)
             time.sleep(60)  # Wait a bit if there was an error
 
-# Update main function to register the new handler
+def run_bot():
+    """Start the bot with polling directly via HTTP API instead of using asyncio."""
+    print("Starting bot with synchronous polling...")
+    
+    # Delete webhook manually via direct HTTP request
+    print("Removing any existing webhooks via HTTP API...")
+    webhook_url = f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=true"
+    try:
+        import requests
+        response = requests.get(webhook_url)
+        print(f"Webhook removal response: {response.status_code} {response.text}")
+    except Exception as e:
+        print(f"Error removing webhook: {e}")
+    
+    # Set up basic command handlers
+    handlers = {
+        '/start': start_handler,
+        '/help': help_handler,
+        '/fancy': fancy_handler,
+        '/name_fonts': name_fonts_handler,
+        '/alphabet': alphabet_handler,
+        '/letter': letter_handler,
+        '/bio_styles': bio_styles_handler
+    }
+    
+    # Start polling loop
+    last_update_id = 0
+    poll_interval = 1.0  # seconds
+    
+    while True:
+        try:
+            # Get updates with long polling
+            updates_url = f"https://api.telegram.org/bot{TOKEN}/getUpdates?offset={last_update_id + 1}&timeout=30"
+            response = requests.get(updates_url)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('ok') and data.get('result'):
+                    updates = data['result']
+                    if updates:
+                        # Update the last update ID
+                        last_update_id = max(update['update_id'] for update in updates)
+                        
+                        # Process each update
+                        for update in updates:
+                            # Update the activity timestamp
+                            update_activity()
+                            
+                            # Check if it's a message with a command
+                            if 'message' in update and 'text' in update['message']:
+                                message = update['message']
+                                chat_id = message['chat']['id']
+                                text = message['text']
+                                
+                                # Handle commands
+                                for command, handler in handlers.items():
+                                    if text.startswith(command):
+                                        try:
+                                            handler(update, chat_id, text)
+                                        except Exception as e:
+                                            print(f"Error in handler {command}: {e}")
+                                            send_message(chat_id, "Sorry, there was an error processing your request.")
+            
+            # Sleep before next poll
+            time.sleep(poll_interval)
+            
+        except Exception as e:
+            print(f"Error in polling: {e}")
+            time.sleep(poll_interval * 2)  # Wait longer after an error
+
+def send_message(chat_id, text, reply_markup=None):
+    """Send a message using the Telegram Bot API directly."""
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    data = {
+        'chat_id': chat_id,
+        'text': text,
+        'parse_mode': 'HTML'
+    }
+    
+    if reply_markup:
+        data['reply_markup'] = reply_markup
+    
+    try:
+        import requests
+        response = requests.post(url, json=data)
+        return response.json()
+    except Exception as e:
+        print(f"Error sending message: {e}")
+        return None
+
+def start_handler(update, chat_id, text):
+    """Handle /start command."""
+    welcome_text = (
+        "👋 Welcome to the Font Styles Bot! 🎨\n\n"
+        "I can help you create fancy text styles for your name or any text.\n\n"
+        "Try these commands:\n"
+        "/fancy [name] - Get a random fancy styled name\n"
+        "/name_fonts [name] - See your name in all available styles\n"
+        "/bio_styles [name] - Get fancy bio styles for Telegram\n\n"
+        "Type /help to see all available commands."
+    )
+    send_message(chat_id, welcome_text)
+
+def help_handler(update, chat_id, text):
+    """Handle /help command."""
+    help_text = (
+        "🤖 Font Styles Bot Commands 🤖\n\n"
+        "/fancy [name] - Generate a random fancy stylized name\n"
+        "/name_fonts [name] - Show all available font styles for a name\n"
+        "/alphabet - Display the full alphabet in a random font style\n"
+        "/letter [letter] - Show all font styles for a single letter\n"
+        "/bio_styles [name] - Generate fancy stylish bios for Telegram\n"
+        "/help - Show this help message"
+    )
+    send_message(chat_id, help_text)
+
+def fancy_handler(update, chat_id, text):
+    """Handle /fancy command."""
+    parts = text.split(' ', 1)
+    if len(parts) < 2:
+        send_message(chat_id, "Please provide a name after /fancy\nExample: /fancy John")
+        return
+    
+    name = parts[1]
+    fancy_name = generate_fancy_name(name)
+    send_message(chat_id, f"Here's your fancy name: {fancy_name}")
+
+def name_fonts_handler(update, chat_id, text):
+    """Handle /name_fonts command."""
+    parts = text.split(' ', 1)
+    if len(parts) < 2:
+        send_message(chat_id, "Please provide a name after /name_fonts\nExample: /name_fonts John")
+        return
+    
+    name = parts[1]
+    response = "Your name in different styles:\n\n"
+    
+    for style_num, style_name in STYLE_NAMES.items():
+        try:
+            style_func = FONT_STYLES[style_name]
+            styled_name = ''.join(style_func(c) for c in name)
+            response += f"{style_num}. {styled_name}\n"
+        except Exception:
+            continue
+    
+    send_message(chat_id, response)
+
+def alphabet_handler(update, chat_id, text):
+    """Handle /alphabet command."""
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    style_name = random.choice(list(STYLE_NAMES.values()))
+    style_function = FONT_STYLES[style_name]
+    styled_alphabet = ''.join(style_function(c) for c in alphabet)
+    
+    send_message(chat_id, f"Alphabet in {style_name.replace('_', ' ')} style:\n{styled_alphabet}")
+
+def letter_handler(update, chat_id, text):
+    """Handle /letter command."""
+    parts = text.split(' ', 1)
+    if len(parts) < 2 or len(parts[1]) != 1 or not parts[1].isalpha():
+        send_message(chat_id, "Please provide a single letter after /letter\nExample: /letter A")
+        return
+    
+    letter = parts[1].upper()
+    response = f"Letter {letter} in all styles:\n"
+    
+    for style_num, style_name in STYLE_NAMES.items():
+        try:
+            style_func = FONT_STYLES[style_name]
+            styled_letter = style_func(letter)
+            response += f"{style_num}. {styled_letter}\n"
+        except Exception:
+            continue
+    
+    send_message(chat_id, response)
+
+def bio_styles_handler(update, chat_id, text):
+    """Handle /bio_styles command."""
+    parts = text.split(' ', 1)
+    if len(parts) < 2:
+        send_message(chat_id, "Please provide a name after /bio_styles\nExample: /bio_styles John")
+        return
+    
+    name = parts[1]
+    response = "Fancy bio styles for your name:\n\n"
+    
+    # List of bio style functions
+    bio_styles = [
+        stylish_bio_accent,
+        stylish_bio_butterfly,
+        stylish_bio_premium,
+        stylish_bio_special,
+        stylish_bio_infinity,
+        stylish_bio_crystal,
+        stylish_bio_royal,
+        stylish_bio_angel,
+        stylish_bio_diamond_crown,
+        stylish_bio_shadow
+    ]
+    
+    # Generate styles
+    for i, style_func in enumerate(bio_styles):
+        try:
+            styled_name = style_func(name)
+            response += f"{i+1}. {styled_name}\n\n"
+        except Exception:
+            continue
+    
+    send_message(chat_id, response)
+
 def main():
     """Start the bot."""
-    max_retries = 3
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        try:
-            # Print diagnostic information
-            print(f"Starting bot (Attempt {retry_count + 1}/{max_retries})...")
-            print(f"Python version: {sys.version}")
-            print(f"Process ID: {os.getpid()}")
-            
-            # Create the Application and pass it your bot's token
-            application = Application.builder().token(TOKEN).build()
-
-            # Add command handlers
-            application.add_handler(CommandHandler("start", start))
-            application.add_handler(CommandHandler("fancy", fancy_name))
-            application.add_handler(CommandHandler("help", help_command))
-            application.add_handler(CommandHandler("alphabet", show_alphabet))
-            application.add_handler(CommandHandler("letter", az_fonts))
-            application.add_handler(CommandHandler("name_fonts", name_all_fonts))
-            application.add_handler(CommandHandler("bio_styles", bio_styles))
-            
-            # Add callback query handler for the buttons
-            application.add_handler(CallbackQueryHandler(button_callback))
-            
-            # Add error handler
-            application.add_error_handler(error_handler)
-
-            # Start HTTP server in a separate thread for Render
-            server_thread = threading.Thread(target=run_http_server)
-            server_thread.daemon = True
-            server_thread.start()
-            
-            # Start watchdog in a separate thread
-            watchdog_thread = threading.Thread(target=watchdog)
-            watchdog_thread.daemon = True
-            watchdog_thread.start()
-
-            # Log that we're starting
-            print("Bot initialized successfully!")
-            logging.info("Bot is starting up with token: %s...", TOKEN[:10])
-            
-            # Force garbage collection before starting
-            import gc
-            gc.collect()
-            
-            # Update activity timestamp
-            update_activity()
-            
-            # Ensure webhook is deleted to avoid conflicts - fixed for asyncio
-            print("Removing any existing webhooks...")
-            try:
-                # Create a new loop instead of using asyncio.run
-                import asyncio
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-                # Run the delete_webhook coroutine
-                loop.run_until_complete(application.bot.delete_webhook(drop_pending_updates=True))
-                loop.close()
-                print("Webhook removed successfully.")
-            except Exception as e:
-                print(f"Error removing webhook: {e}")
-            
-            # Add a small delay to ensure webhook deletion is fully processed
-            time.sleep(3)
-            
-            # Start the Bot with error handling - simpler parameters
-            print("Starting polling...")
-            application.run_polling(
-                allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True
-            )
-            
-            # If we get here, the polling stopped normally
-            return
-            
-        except Exception as e:
-            retry_count += 1
-            logging.error(f"Error in main function (attempt {retry_count}/{max_retries}): {str(e)}", exc_info=True)
-            print(f"Critical error: {str(e)}")
-            
-            if retry_count < max_retries:
-                wait_time = 10 * retry_count  # Exponential backoff
-                print(f"Waiting {wait_time} seconds before retry...")
-                time.sleep(wait_time)
-                print("Attempting to restart bot...")
-            else:
-                print("Maximum retry attempts reached. Exiting...")
-                sys.exit(1)  # Exit with error code to trigger Render restart
-
-# Error handler function for the bot
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle errors in the telegram bot."""
-    # Update activity to indicate the bot is still running
-    update_activity()
-    
-    # Log the error
-    logging.error("Exception while handling an update:", exc_info=context.error)
-    
-    # Extract the Update and error
-    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
-    tb_string = "".join(tb_list)
-    
-    # Check if it's a conflict error (409)
-    if "409 Conflict" in tb_string:
-        logging.error("Conflict detected (409): Another instance might be running")
-        print("CONFLICT ERROR: Webhook conflict or another instance is running")
+    try:
+        # Print diagnostic information
+        print(f"Python version: {sys.version}")
+        print(f"Process ID: {os.getpid()}")
         
-        try:
-            # Try to resolve the conflict by removing the webhook directly through the bot instance
-            # This is safer than creating a new event loop
-            await context.bot.delete_webhook(drop_pending_updates=True)
-            logging.info("Webhook deleted to resolve conflict")
-            
-            # Force a restart of the polling mechanism
-            print("Will restart polling after clearing conflict...")
-            
-            # Schedule a restart but don't manipulate the event loop directly
-            if hasattr(context, 'application'):
-                context.application.stop()
-                print("Application stopped, restart will be triggered by main function")
-                
-        except Exception as e:
-            logging.error(f"Failed to resolve conflict: {e}")
-    
-    # Build the message
-    error_msg = f"An exception was raised while handling an update\n{tb_string}"
-    
-    # Send to developer for urgent issues only (truncate to avoid message too long errors)
-    if update and isinstance(update, Update) and update.effective_chat:
-        try:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="Sorry, something went wrong with processing your request. Please try again."
-            )
-        except Exception as e:
-            logging.error(f"Failed to send error message: {e}")
-            
-    # For serious errors that might require restart
-    if "HTTPError" in tb_string or "Conflict" in tb_string or "Timeout" in tb_string or "event loop" in tb_string:
-        print("Critical network or event loop error detected - may need restart")
-        logging.critical("Critical network or event loop error that may require restart")
+        # Start HTTP server in a separate thread for Render
+        server_thread = threading.Thread(target=run_http_server)
+        server_thread.daemon = True
+        server_thread.start()
         
-        # In extreme cases, exit to let the process be restarted
-        if ("409 Conflict" in tb_string or "event loop" in tb_string) and random.random() < 0.5:  # 50% chance to restart
-            print("Exiting process to force restart...")
-            # Use a delayed exit to allow current handlers to complete
-            threading.Timer(5.0, lambda: os._exit(1)).start()
+        # Start watchdog in a separate thread
+        watchdog_thread = threading.Thread(target=watchdog)
+        watchdog_thread.daemon = True
+        watchdog_thread.start()
+        
+        # Update activity timestamp
+        update_activity()
+        
+        # Start the bot with direct polling
+        run_bot()
+        
+    except Exception as e:
+        logging.error(f"Critical error in main function: {str(e)}", exc_info=True)
+        print(f"Critical error: {str(e)}")
+        sys.exit(1)  # Exit with error code to trigger Render restart
 
 if __name__ == '__main__':
     main() 
