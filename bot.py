@@ -14,6 +14,7 @@ from datetime import datetime
 import sys
 import traceback
 import concurrent.futures
+import asyncio
 
 # Load environment variables from .env file if it exists
 try:
@@ -2344,7 +2345,20 @@ def main():
             # Update activity timestamp
             update_activity()
             
+            # Ensure webhook is deleted to avoid conflicts
+            print("Removing any existing webhooks...")
+            try:
+                # Delete webhook in a blocking way to ensure it's removed before polling starts
+                asyncio.run(application.bot.delete_webhook(drop_pending_updates=True))
+                print("Webhook removed successfully.")
+            except Exception as e:
+                print(f"Error removing webhook: {e}")
+            
+            # Add a small delay to ensure webhook deletion is fully processed
+            time.sleep(3)
+            
             # Start the Bot with error handling - simpler parameters
+            print("Starting polling...")
             application.run_polling(
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=True
@@ -2380,15 +2394,47 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
     tb_string = "".join(tb_list)
     
+    # Check if it's a conflict error (409)
+    if "409 Conflict" in tb_string:
+        logging.error("Conflict detected (409): Another instance might be running")
+        print("CONFLICT ERROR: Webhook conflict or another instance is running")
+        
+        try:
+            # Try to resolve the conflict by removing the webhook
+            await context.bot.delete_webhook(drop_pending_updates=True)
+            logging.info("Webhook deleted to resolve conflict")
+            
+            # Force a restart of the polling mechanism
+            print("Will restart polling after clearing conflict...")
+            
+            # This will trigger a restart in the main function's exception handler
+            if hasattr(context, 'update_queue'):
+                context.update_queue.put_nowait(None)
+        except Exception as e:
+            logging.error(f"Failed to resolve conflict: {e}")
+    
     # Build the message
     error_msg = f"An exception was raised while handling an update\n{tb_string}"
     
     # Send to developer for urgent issues only (truncate to avoid message too long errors)
     if update and isinstance(update, Update) and update.effective_chat:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="Sorry, something went wrong with processing your request. Please try again."
-        )
+        try:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="Sorry, something went wrong with processing your request. Please try again."
+            )
+        except Exception as e:
+            logging.error(f"Failed to send error message: {e}")
+            
+    # For serious errors that might require restart
+    if "HTTPError" in tb_string or "Conflict" in tb_string or "Timeout" in tb_string:
+        print("Critical network error detected - may need restart")
+        logging.critical("Critical network error that may require restart")
+        
+        # In extreme cases, exit to let the process be restarted
+        if "409 Conflict" in tb_string and random.random() < 0.5:  # 50% chance to restart on conflict
+            print("Exiting process to force restart...")
+            os._exit(1)  # Force immediate exit in case of severe conflict
 
 if __name__ == '__main__':
     main() 
