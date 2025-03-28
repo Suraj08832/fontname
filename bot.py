@@ -6,6 +6,9 @@ import unicodedata
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import re
+# Add these imports for web server
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Load environment variables from .env file if it exists
 try:
@@ -2086,6 +2089,21 @@ async def name_all_fonts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
+# Simple HTTP request handler for health checks
+class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'Bot is running')
+
+def run_http_server():
+    # Get port from environment variable or use default
+    port = int(os.environ.get('PORT', 8080))
+    server_address = ('', port)
+    httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
+    print(f"Starting HTTP server on port {port}...")
+    httpd.serve_forever()
+
 # Update main function to register the new handler
 def main():
     """Start the bot."""
@@ -2103,6 +2121,11 @@ def main():
     
     # Add callback query handler for the buttons
     application.add_handler(CallbackQueryHandler(button_callback))
+
+    # Start HTTP server in a separate thread for Render
+    server_thread = threading.Thread(target=run_http_server)
+    server_thread.daemon = True
+    server_thread.start()
 
     # Start the Bot
     print("Starting bot...")

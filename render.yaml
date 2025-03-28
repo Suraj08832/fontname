@@ -7,4 +7,6 @@ services:
     plan: free
     envVars:
       - key: TOKEN
-        sync: false 
+        sync: false
+      - key: PORT
+        value: 10000 
