@@ -29,7 +29,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Bot token
-TOKEN = os.environ.get('TOKEN', '8033666584:AAESfSuR7uaPLSpjgzM65rR2My8Oqfon1wo')
+TOKEN = os.environ.get('TOKEN', '6935014357:AAGu2eE7z-_p6SHtLEeNIp5XbLEZCJYkQlk')
 
 # Global variable to keep track of last activity
 last_activity_time = datetime.now()
@@ -2634,7 +2634,7 @@ def answer_callback_query(callback_query_id, text=None, show_alert=False):
 user_styled_names = {}
 
 def fancy_handler(update, chat_id, text):
-    """Handle /fancy command with buttons."""
+    """Handle /fancy command with buttons for various styled names."""
     parts = text.split(' ', 1)
     if len(parts) < 2:
         send_message(chat_id, "Please provide a name after /fancy\nExample: /fancy John")
@@ -2645,13 +2645,37 @@ def fancy_handler(update, chat_id, text):
     # Generate multiple fancy names
     fancy_names = []
     
-    # Select 20 different bio styles from 50 available styles
+    # Select diverse bio styles that look good
     bio_styles = [
+        # Standard bio styles
         stylish_bio_accent, stylish_bio_butterfly, stylish_bio_premium, stylish_bio_special,
         stylish_bio_infinity, stylish_bio_crystal, stylish_bio_royal, stylish_bio_angel,
         stylish_bio_diamond_crown, stylish_bio_shadow, stylish_bio_heart, stylish_bio_clone,
+        
+        # Additional bio styles
         stylish_bio_sanatan, stylish_bio_anjali, stylish_bio_misty, stylish_bio_joker,
-        stylish_bio_prashant, stylish_bio_innocent, stylish_bio_isi_u, stylish_bio_miss
+        stylish_bio_prashant, stylish_bio_innocent, stylish_bio_isi_u, stylish_bio_miss,
+        
+        # More diverse styles
+        stylish_bio_prachi, stylish_bio_jasmine, stylish_bio_dark, stylish_bio_viskl,
+        stylish_bio_black_heart, stylish_bio_abstract, stylish_bio_arrow_style, stylish_bio_waves,
+        stylish_bio_neon, stylish_bio_gaming, stylish_bio_fire_ice, stylish_bio_cute,
+        stylish_bio_elegant, stylish_bio_fancy_border, stylish_bio_galaxy, stylish_bio_glitch,
+        stylish_bio_magic, stylish_bio_retro, stylish_bio_tech, stylish_bio_cursed,
+    ]
+    
+    # Also add some direct font styles
+    direct_styles = [
+        lambda name: ''.join(FONT_STYLES['bold'](c) for c in name),
+        lambda name: ''.join(FONT_STYLES['script'](c) for c in name),
+        lambda name: ''.join(FONT_STYLES['fraktur'](c) for c in name),
+        lambda name: ''.join(FONT_STYLES['circled'](c) for c in name),
+        lambda name: ''.join(FONT_STYLES['bubbles'](c) for c in name),
+        lambda name: ''.join(FONT_STYLES['double_struck'](c) for c in name),
+        lambda name: ''.join(FONT_STYLES['medieval'](c) for c in name),
+        lambda name: ''.join(FONT_STYLES['cursive'](c) for c in name),
+        lambda name: ''.join(FONT_STYLES['serif_bold'](c) for c in name),
+        lambda name: ''.join(FONT_STYLES['runic'](c) for c in name),
     ]
     
     # Apply each style to the name and store the styled names
@@ -2661,6 +2685,14 @@ def fancy_handler(update, chat_id, text):
             fancy_names.append(styled_name)
         except Exception as e:
             print(f"Error applying style {style_func.__name__}: {e}")
+    
+    # Apply direct font styles
+    for i, style_func in enumerate(direct_styles):
+        try:
+            styled_name = style_func(name)
+            fancy_names.append(styled_name)
+        except Exception as e:
+            print(f"Error applying direct style #{i}: {e}")
     
     # Store the styled names for this user for later retrieval
     user_styled_names[chat_id] = fancy_names
