@@ -10,11 +10,23 @@ echo "Current time: $(date)"
 echo "Python version: $(python --version)"
 
 echo "Cleaning up any existing processes..."
-# Try to find and kill any existing Python processes (safely)
-pkill -f "python bot.py" || echo "No existing processes found to clean up"
+# Kill all Python processes running bot.py
+pkill -9 -f "python.*bot.py" || echo "No existing processes found to clean up"
+
+# Additional cleanup for any hanging processes
+for pid in $(pgrep -f "python.*bot.py"); do
+    kill -9 $pid 2>/dev/null || true
+done
 
 # Wait a bit to ensure processes are terminated
-sleep 3
+sleep 5
+
+# Verify no bot processes are running
+if pgrep -f "python.*bot.py" > /dev/null; then
+    echo "Warning: Some bot processes are still running. Forcing cleanup..."
+    pkill -9 -f "python.*bot.py"
+    sleep 3
+fi
 
 echo "Starting Telegram Bot with auto-restart..."
 
@@ -26,7 +38,7 @@ MIN_RESTART_INTERVAL=30  # Minimum seconds between restarts
 
 # Function to check if bot is running
 check_bot_status() {
-    if pgrep -f "python bot.py" > /dev/null; then
+    if pgrep -f "python.*bot.py" > /dev/null; then
         echo "Bot process is running"
         return 0
     else
@@ -70,6 +82,9 @@ while [ $restart_count -lt $MAX_RESTARTS ]; do
     
     # Check Python environment before starting
     check_python_env
+    
+    # Clean up any existing processes before starting
+    pkill -9 -f "python.*bot.py" || true
     
     # Start the bot in the background and capture its PID
     # Use python -u to disable output buffering

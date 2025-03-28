@@ -18,6 +18,7 @@ import asyncio
 import httpx
 import requests
 import gc  # Add missing gc import for garbage collection
+import telegram.error
 
 # Load environment variables from .env file if it exists
 try:
@@ -3038,12 +3039,28 @@ def main():
             raise ValueError("No API token found in environment variables or default TOKEN")
         print("API token loaded successfully")
         
-        # Test API connection
-        print("\nTesting API connection...")
-        response = requests.get(f"https://api.telegram.org/bot{api_token}/getMe", timeout=10)
-        if response.status_code != 200:
-            raise ValueError(f"Failed to connect to Telegram API: {response.text}")
-        print("API connection successful")
+        # Test API connection and delete webhook
+        print("\nTesting API connection and cleaning up webhooks...")
+        try:
+            # Delete webhook first
+            response = requests.post(
+                f"https://api.telegram.org/bot{api_token}/deleteWebhook",
+                timeout=10
+            )
+            if response.status_code != 200:
+                print(f"Warning: Failed to delete webhook: {response.text}")
+            
+            # Then test connection
+            response = requests.get(
+                f"https://api.telegram.org/bot{api_token}/getMe",
+                timeout=10
+            )
+            if response.status_code != 200:
+                raise ValueError(f"Failed to connect to Telegram API: {response.text}")
+            print("API connection successful")
+        except Exception as e:
+            print(f"Warning during API setup: {str(e)}")
+            time.sleep(5)  # Wait before retrying
         
         # Start HTTP server in a separate thread for Render
         print("\nStarting HTTP server...")
@@ -3097,6 +3114,19 @@ def main():
         try:
             print("\nStarting polling...")
             application.run_polling(allowed_updates=Update.ALL_TYPES)
+        except telegram.error.Conflict as e:
+            print(f"Conflict error detected: {str(e)}")
+            print("Attempting to resolve conflict...")
+            # Try to delete webhook again
+            try:
+                response = requests.post(
+                    f"https://api.telegram.org/bot{api_token}/deleteWebhook",
+                    timeout=10
+                )
+                print(f"Webhook deletion response: {response.text}")
+            except Exception as webhook_error:
+                print(f"Error deleting webhook: {str(webhook_error)}")
+            raise  # Re-raise to trigger restart
         except Exception as e:
             print(f"Error during polling: {str(e)}")
             traceback.print_exc()
