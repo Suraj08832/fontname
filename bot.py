@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 import sys
 import traceback
+import concurrent.futures
 
 # Load environment variables from .env file if it exists
 try:
@@ -2129,28 +2130,22 @@ def safe_execute(func, *args, **kwargs):
                     else:
                         new_args.append(a)
                 args = tuple(new_args)
-                
-        # Execute with timeout protection
-        import signal
         
-        def timeout_handler(signum, frame):
-            raise TimeoutError("Function execution timed out")
+        # Execute the function with a basic timeout approach
+        # This is platform-independent but less precise
+        import threading
+        import concurrent.futures
         
-        # Set timeout of 5 seconds
-        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(5)
-        
-        try:
-            result = func(*args, **kwargs)
-            return result
-        finally:
-            # Reset the alarm and handler
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(func, *args, **kwargs)
+            try:
+                # Wait for 5 seconds max
+                result = future.result(timeout=5)
+                return result
+            except concurrent.futures.TimeoutError:
+                logging.error(f"Timeout executing {func.__name__}")
+                return "Error: Operation timed out"
     
-    except TimeoutError as e:
-        logging.error(f"Timeout executing {func.__name__}: {str(e)}")
-        return f"Error: Operation timed out"
     except Exception as e:
         logging.error(f"Error in safe_execute for {func.__name__}: {str(e)}")
         return f"Error: {str(e)}"
@@ -2337,14 +2332,10 @@ def main():
             # Update activity timestamp
             update_activity()
             
-            # Start the Bot with error handling
+            # Start the Bot with error handling - simpler parameters
             application.run_polling(
                 allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True,
-                timeout=30,  # Shorter timeout to detect connection issues quicker
-                read_timeout=30,
-                write_timeout=30,
-                pool_timeout=30
+                drop_pending_updates=True
             )
             
             # If we get here, the polling stopped normally
