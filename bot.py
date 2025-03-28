@@ -149,14 +149,70 @@ FONT_STYLES = {
     'math_sans': lambda c: chr(ord('𝖠') + ord(c) - ord('A')) if 'A' <= c <= 'Z' else chr(ord('𝖺') + ord(c) - ord('a')) if 'a' <= c <= 'z' else c,
     
     # 28. Negative Bubbles
-    'negative_bubbles': lambda c: '🅓' if c.upper() == 'D' else '🅔' if c.upper() == 'E' else '🅕' if c.upper() == 'F' else '🅖' if c.upper() == 'G' else '🅗' if c.upper() == 'H' else '🅘' if c.upper() == 'I' else '🅙' if c.upper() == 'J' else '🅚' if c.upper() == 'K' else '🅛' if c.upper() == 'L' else '🅜' if c.upper() == 'M' else '🅝' if c.upper() == 'N' else '🅞' if c.upper() == 'O' else '🅟' if c.upper() == 'P' else '🅠' if c.upper() == 'Q' else '🅡' if c.upper() == 'R' else '🅢' if c.upper() == 'S' else '🅣' if c.upper() == 'T' else '🅤' if c.upper() == 'U' else '🅥' if c.upper() == 'V' else '🅦' if c.upper() == 'W' else '🅧' if c.upper() == 'X' else '🅨' if c.upper() == 'Y' else '🅩' if c.upper() == 'Z' else '🅐' if c.upper() == 'A' else '🅑' if c.upper() == 'B' else '🅒' if c.upper() == 'C' else c,
+    'negative_bubbles': lambda c: (
+        '🅐' if c.upper() == 'A' else
+        '🅑' if c.upper() == 'B' else
+        '🅒' if c.upper() == 'C' else
+        '🅓' if c.upper() == 'D' else
+        '🅔' if c.upper() == 'E' else
+        '🅕' if c.upper() == 'F' else
+        '🅖' if c.upper() == 'G' else
+        '🅗' if c.upper() == 'H' else
+        '🅘' if c.upper() == 'I' else
+        '🅙' if c.upper() == 'J' else
+        '🅚' if c.upper() == 'K' else
+        '🅛' if c.upper() == 'L' else
+        '🅜' if c.upper() == 'M' else
+        '🅝' if c.upper() == 'N' else
+        '🅞' if c.upper() == 'O' else
+        '🅟' if c.upper() == 'P' else
+        '🅠' if c.upper() == 'Q' else
+        '🅡' if c.upper() == 'R' else
+        '🅢' if c.upper() == 'S' else
+        '🅣' if c.upper() == 'T' else
+        '🅤' if c.upper() == 'U' else
+        '🅥' if c.upper() == 'V' else
+        '🅦' if c.upper() == 'W' else
+        '🅧' if c.upper() == 'X' else
+        '🅨' if c.upper() == 'Y' else
+        '🅩' if c.upper() == 'Z' else
+        c
+    ),
     
     # 29. Greek Math - 𝚮𝚺𝚺𝚪 style
     'greek_math': lambda c: '𝚺' if c.upper() == 'S' else '𝚻' if c.upper() == 'T' else '𝚼' if c.upper() == 'U' else '𝚽' if c.upper() == 'F' else '𝚾' if c.upper() == 'X' else '𝚿' if c.upper() == 'PS' else '𝛀' if c.upper() == 'O' else '𝚪' if c.upper() == 'G' else '𝚫' if c.upper() == 'D' else '𝚬' if c.upper() == 'E' else '𝚭' if c.upper() == 'Z' else '𝚮' if c.upper() == 'H' else '𝚯' if c.upper() == 'TH' else '𝚰' if c.upper() == 'I' else '𝚱' if c.upper() == 'K' else '𝚲' if c.upper() == 'L' else '𝚳' if c.upper() == 'M' else '𝚴' if c.upper() == 'N' else '𝚵' if c.upper() == 'KS' else '𝚷' if c.upper() == 'P' else '𝚸' if c.upper() == 'R' else '𝚨' if c.upper() == 'A' else '𝚩' if c.upper() == 'B' else '🙹' if c.upper() == 'J' else '🙺' if c.upper() == 'W' else '🙻' if c.upper() == 'Y' else '🙼' if c.upper() == 'Z' else '🙽' if c.upper() == 'X' else '🙾' if c.upper() == 'V' else '🙿' if c.upper() == 'Q' else c,
     
     # 30. Tribal Letters
-    'tribal': lambda c: c.translate(str.maketrans('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
-                                              'ᎪᎴᏨᏧᏋᎴᎶᏂᎥᏠᏦᏝᎷᏁᎾᏢᏅᏒᏕᎿᏌᏉᏔᎱᎩᏃᎪᎴᏨᏧᏋᎴᎶᏂᎥᏠᏦᏝᎷᏁᎾᏢᏅᏒᏕᎿᏌᏉᏔᎱᎩᏃ')),
+    'tribal': lambda c: (
+        'Ꮛ' if c.upper() == 'E' else
+        'Ꮁ' if c.upper() == 'X' else
+        'Ꭺ' if c.upper() == 'A' else
+        'Ꮇ' if c.upper() == 'M' else
+        'Ꮲ' if c.upper() == 'P' else
+        'Ꮭ' if c.upper() == 'L' else
+        'Ꮛ' if c.upper() == 'E' else
+        'Ꮄ' if c.upper() == 'B' else
+        'Ꮸ' if c.upper() == 'C' else
+        'Ꮷ' if c.upper() == 'D' else
+        'Ꮄ' if c.upper() == 'F' else
+        'Ꮆ' if c.upper() == 'G' else
+        'Ꮒ' if c.upper() == 'H' else
+        'ꭵ' if c.upper() == 'I' else
+        'Ꮰ' if c.upper() == 'J' else
+        'Ꮶ' if c.upper() == 'K' else
+        'Ꮑ' if c.upper() == 'N' else
+        'Ꮎ' if c.upper() == 'O' else
+        'Ꮕ' if c.upper() == 'Q' else
+        'Ꮢ' if c.upper() == 'R' else
+        'Ꮥ' if c.upper() == 'S' else
+        'Ꮏ' if c.upper() == 'T' else
+        'Ꮜ' if c.upper() == 'U' else
+        'Ꮙ' if c.upper() == 'V' else
+        'Ꮤ' if c.upper() == 'W' else
+        'ꭹ' if c.upper() == 'Y' else
+        'Ꮓ' if c.upper() == 'Z' else
+        c
+    ),
     
     # 31. Blocks Font - ℍ𝔼𝔼ℝ style
     'blocks': lambda c: 'ℍ' if c.upper() == 'H' else '𝔼' if c.upper() in 'E' else 'ℝ' if c.upper() == 'R' else c,
@@ -168,7 +224,34 @@ FONT_STYLES = {
     'squiggle': lambda c: '𝙲' if c.upper() == 'C' else '𝙳' if c.upper() == 'D' else '𝙴' if c.upper() == 'E' else '𝙵' if c.upper() == 'F' else '𝙶' if c.upper() == 'G' else '𝙷' if c.upper() == 'H' else '𝙸' if c.upper() == 'I' else '𝙹' if c.upper() == 'J' else '𝙺' if c.upper() == 'K' else '𝙻' if c.upper() == 'L' else '𝙼' if c.upper() == 'M' else '𝙽' if c.upper() == 'N' else '𝙾' if c.upper() == 'O' else '𝙿' if c.upper() == 'P' else '𝚀' if c.upper() == 'Q' else '𝚁' if c.upper() == 'R' else '𝚂' if c.upper() == 'S' else '𝚃' if c.upper() == 'T' else '𝚄' if c.upper() == 'U' else '𝚅' if c.upper() == 'V' else '𝚆' if c.upper() == 'W' else '𝚇' if c.upper() == 'X' else '𝚈' if c.upper() == 'Y' else '𝚉' if c.upper() == 'Z' else '𝙰' if c.upper() == 'A' else '𝙱' if c.upper() == 'B' else c,
     
     # 34. Kana Style - 𝝨𝝖𝝣𝝙𝝚𝝚𝝥 style
-    'kana': lambda c: '𝝨' if c.upper() == 'S' else '𝝖' if c.upper() == 'A' else '𝝣' if c.upper() == 'N' else '𝝙' if c.upper() == 'D' else '𝝚' if c.upper() == 'E' else '𝝥' if c.upper() == 'P' else '𝝧' if c.upper() == 'R' else '𝝩' if c.upper() == 'T' else '𝝪' if c.upper() == 'U' else '𝝟' if c.upper() == 'J' else '𝝗' if c.upper() == 'B' else '𝝘' if c.upper() == 'C' else '𝝜' if c.upper() == 'G' else '𝝝' if c.upper() == 'H' else '𝝞' if c.upper() == 'I' else '𝝠' if c.upper() == 'K' else '𝝡' if c.upper() == 'L' else '𝝢' if c.upper() == 'M' else '𝝤' if c.upper() == 'O' else '𝝦' if c.upper() == 'Q' else '𝝫' if c.upper() == 'V' else '𝝬' if c.upper() == 'W' else '𝝭' if c.upper() == 'X' else '𝝮' if c.upper() == 'Y' else '𝝯' if c.upper() == 'Z' else c,
+    'kana': lambda c: (
+        '𝝠' if c.upper() == 'K' else
+        '𝝧' if c.upper() == 'R' else
+        '𝝞' if c.upper() == 'I' else
+        '𝝨' if c.upper() == 'S' else
+        '𝝝' if c.upper() == 'H' else
+        '𝝣' if c.upper() == 'N' else
+        '𝝖' if c.upper() == 'A' else
+        '𝝙' if c.upper() == 'D' else
+        '𝝚' if c.upper() == 'E' else
+        '𝝥' if c.upper() == 'P' else
+        '𝝩' if c.upper() == 'T' else
+        '𝝪' if c.upper() == 'U' else
+        '𝝟' if c.upper() == 'J' else
+        '𝝗' if c.upper() == 'B' else
+        '𝝘' if c.upper() == 'C' else
+        '𝝜' if c.upper() == 'G' else
+        '𝝡' if c.upper() == 'L' else
+        '𝝢' if c.upper() == 'M' else
+        '𝝤' if c.upper() == 'O' else
+        '𝝦' if c.upper() == 'Q' else
+        '𝝫' if c.upper() == 'V' else
+        '𝝬' if c.upper() == 'W' else
+        '𝝭' if c.upper() == 'X' else
+        '𝝮' if c.upper() == 'Y' else
+        '𝝯' if c.upper() == 'Z' else
+        c
+    ),
     
     # 35. Runic Font - ꑛꍟꍟꋪ style
     'runic': lambda c: 'ᛋ' if c.upper() == 'S' else 'ᚢ' if c.upper() == 'U' else 'ᚱ' if c.upper() == 'R' else 'ᚨ' if c.upper() == 'A' else 'ᛃ' if c.upper() == 'J' else 'ᚦ' if c.upper() == 'TH' else 'ᚾ' if c.upper() == 'N' else 'ᛞ' if c.upper() == 'D' else 'ᛖ' if c.upper() == 'E' else 'ᛈ' if c.upper() == 'P' else 'ᛏ' if c.upper() == 'T' else 'ᚹ' if c.upper() == 'W' else 'ᛒ' if c.upper() == 'B' else 'ᚳ' if c.upper() == 'C' else 'ᚷ' if c.upper() == 'G' else 'ᚻ' if c.upper() == 'H' else 'ᛁ' if c.upper() == 'I' else 'ᚲ' if c.upper() == 'K' else 'ᛚ' if c.upper() == 'L' else 'ᛗ' if c.upper() == 'M' else 'ᛟ' if c.upper() == 'O' else 'ᛩ' if c.upper() == 'Q' else 'ᛔ' if c.upper() == 'V' else 'ᛪ' if c.upper() == 'X' else 'ᚤ' if c.upper() == 'Y' else 'ᛎ' if c.upper() == 'Z' else c,
@@ -181,8 +264,21 @@ FONT_STYLES = {
                                                   'αвcdєfgнιjklмησpqrѕтυvwxyzαвcdєfgнιjklмησpqrѕтυvwxyz')),
     
     # 38. Mixed Case Style - ＨᗴＥᖇ style
-    'mixed_case': lambda c: c.translate(str.maketrans('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
-                                                   'ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺᗩᗷᑕᗪᗴᖴᘜᕼＩᒍＫＬᗰＮＯＰＱᖇＳＴＵＶＷＸＹＺ')),
+    'mixed_case': lambda c: (
+        'ᗩ' if c.upper() == 'A' else
+        'ᗷ' if c.upper() == 'B' else
+        'ᑕ' if c.upper() == 'C' else
+        'ᗪ' if c.upper() == 'D' else
+        'ᗴ' if c.upper() == 'E' else
+        'ᖴ' if c.upper() == 'F' else
+        'ᘜ' if c.upper() == 'G' else
+        'ᕼ' if c.upper() == 'H' else
+        'Ｉ' if c.upper() == 'I' else
+        'ᒍ' if c.upper() == 'J' else
+        'Ｋ' if c.upper() == 'K' else
+        'ＬＭＮＯＰＱᖇＳＴＵＶＷＸＹＺ'[ord(c.upper()) - ord('L')] if 'L' <= c.upper() <= 'Z' else
+        c
+    ),
     
     # 39. Gothic Style - 𝙃𝙀𝙀𝙍 style
     'gothic': lambda c: '𝔄' if c.upper() == 'A' else '𝔅' if c.upper() == 'B' else 'ℭ' if c.upper() == 'C' else '𝔇' if c.upper() == 'D' else '𝔈' if c.upper() == 'E' else '𝔉' if c.upper() == 'F' else '𝔊' if c.upper() == 'G' else 'ℌ' if c.upper() == 'H' else 'ℑ' if c.upper() == 'I' else '𝔍' if c.upper() == 'J' else '𝔎' if c.upper() == 'K' else '𝔏' if c.upper() == 'L' else '𝔐' if c.upper() == 'M' else '𝔑' if c.upper() == 'N' else '𝔒' if c.upper() == 'O' else '𝔓' if c.upper() == 'P' else '𝔔' if c.upper() == 'Q' else 'ℜ' if c.upper() == 'R' else '𝔖' if c.upper() == 'S' else '𝔗' if c.upper() == 'T' else '𝔘' if c.upper() == 'U' else '𝔙' if c.upper() == 'V' else '𝔚' if c.upper() == 'W' else '𝔛' if c.upper() == 'X' else '𝔜' if c.upper() == 'Y' else 'ℨ' if c.upper() == 'Z' else c,
@@ -2488,13 +2584,13 @@ def send_message(chat_id, text, reply_markup=None):
         traceback.print_exc()
         return None
 
-def create_inline_keyboard(buttons, rows_of=2):
+def create_inline_keyboard(buttons, rows_of=4):
     """
     Create an inline keyboard from a list of (text, callback_data) tuples.
     
     Args:
         buttons: List of (text, callback_data) tuples
-        rows_of: Number of buttons per row
+        rows_of: Number of buttons per row (default 4)
     
     Returns:
         Dict with inline_keyboard structure for Telegram
@@ -2504,7 +2600,7 @@ def create_inline_keyboard(buttons, rows_of=2):
     
     for i, (text, callback_data) in enumerate(buttons):
         # For longer text, truncate it to keep buttons reasonable
-        display_text = text[:20] + "..." if len(text) > 20 else text
+        display_text = text[:15] + "..." if len(text) > 15 else text
         
         row.append({"text": display_text, "callback_data": callback_data})
         
@@ -2573,11 +2669,11 @@ def fancy_handler(update, chat_id, text):
     buttons = []
     for i, styled_name in enumerate(fancy_names):
         # Create a preview (truncate for display)
-        preview = styled_name[:15] + "..." if len(styled_name) > 15 else styled_name
+        preview = styled_name[:12] + "..." if len(styled_name) > 12 else styled_name
         buttons.append((preview, f"name_{i}_{chat_id}"))
     
-    # Create the inline keyboard
-    reply_markup = create_inline_keyboard(buttons, rows_of=2)
+    # Create the inline keyboard with exactly 4 buttons per row
+    reply_markup = create_inline_keyboard(buttons, rows_of=4)
     
     # Send the message with the inline keyboard
     send_message(
@@ -2597,6 +2693,7 @@ def name_fonts_handler(update, chat_id, text):
     
     # Generate styled names for all available font styles
     buttons = []
+    styled_names = []
     
     for style_num, style_name in STYLE_NAMES.items():
         try:
@@ -2605,9 +2702,10 @@ def name_fonts_handler(update, chat_id, text):
             
             # Generate the styled name
             styled_name = ''.join(style_func(c) for c in name)
+            styled_names.append(styled_name)
             
-            # Create a preview for the button
-            display_name = styled_name[:15] + "..." if len(styled_name) > 15 else styled_name
+            # Create a preview for the button (shorter for better display)
+            display_name = styled_name[:10] + "..." if len(styled_name) > 10 else styled_name
             button_text = f"{style_num}. {display_name}"
             
             # Add to buttons list
@@ -2615,8 +2713,11 @@ def name_fonts_handler(update, chat_id, text):
         except Exception as e:
             print(f"Error generating style {style_name}: {e}")
     
-    # Create inline keyboard
-    reply_markup = create_inline_keyboard(buttons, rows_of=2)
+    # Store the styled names for this user
+    user_styled_names[chat_id] = styled_names
+    
+    # Create inline keyboard with exactly 4 buttons per row
+    reply_markup = create_inline_keyboard(buttons, rows_of=4)
     
     # Send message with inline keyboard
     send_message(
