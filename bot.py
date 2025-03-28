@@ -689,24 +689,24 @@ def stylish_bio_jasmine(text):
     return f"ᯓᡣ𐭩{styled_text} 𓆪⤹ꨄ •𓂃°"
 
 def stylish_bio_sath(text):
-    """Create a stylish bio name with the 'SATH' theme."""
+    """Create a stylish bio name with an elegant modern theme (replaces the previous SATH theme)."""
     styled_text = ""
+    
+    # Use a more elegant styling instead of the previous problematic one
     for i, char in enumerate(text):
         if char.isalpha():
-            if i % 5 == 0:
-                styled_text += "ᴊ❍ "
-            elif i % 5 == 1:
-                styled_text += char.lower() + "aʈɦ "
-            elif i % 5 == 2:
-                styled_text += "𝆭" + char.lower() + "͢Ə "
-            elif i % 5 == 3:
-                styled_text += "Ꮚ" + char.lower() + "꯭ɦ"
+            if i % 4 == 0:
+                styled_text += "𝓟" + char.lower() + "⁺ "
+            elif i % 4 == 1:
+                styled_text += "ʀ" + char.lower() + "᭄ "
+            elif i % 4 == 2:
+                styled_text += "𝐄" + char.lower() + "ꪾ "
             else:
-                styled_text += char.lower() + "ᮃ"
+                styled_text += "𝐌" + char.lower() + "᯽ "
         else:
-            styled_text += char
+            styled_text += char + " "
     
-    return f"⃟🌿{styled_text} 📌 ⃟🤲ɑᴘ𝆭𝝶ɑ Ɓαʞ͞ı͢ı͞ saᮃ🐬 ⃟🕊️sɑ꯭𝆭ᴘ𝝶ɑ 𝆺𝅥𝆺𝅥♛"
+    return f"⋆⁺₊⋆ ☾ {styled_text}☽ ⋆⁺₊⋆"
 
 def stylish_bio_heart(text):
     """Create a stylish bio name with the 'HEART' theme."""
@@ -777,7 +777,7 @@ def stylish_bio_black_heart(text):
         else:
             styled_text += char
     
-    return f"◄⏤͟͟͞🍸⃝⃪🖤{styled_text}᭓┣𝐥𝚵𝚲𝐂𝐊᭓┣𝚵𝚲𝐑𝚻𔘓⃭𓆩🖤𓆪"
+    return f"◄⏤͟͟͞🍸⃝⃪🖤{styled_text}᭓┣𝐁𝐥𝚲𝐂𝚱᭓┣𝚵𝚲𝐑𝚻𔘓⃭𓆩🖤𓆪"
 
 def stylish_bio_infinity(text):
     """Create a stylish bio name with infinity style."""
@@ -1899,6 +1899,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 style_name = data[1]
                 name = '_'.join(data[2:])  # Join remaining parts as the name
+                
+                # Map shortened style names to full names
+                style_map = {
+                    'double': 'double_struck',
+                    'mixed': 'mixed_case',
+                    # Add more mappings as needed
+                }
+                
+                # Check if we need to map a shortened name
+                if style_name in style_map:
+                    style_name = style_map[style_name]
+                
                 style_func = FONT_STYLES.get(style_name)
                 if style_func:
                     styled_name = ''.join(style_func(c) for c in name)
