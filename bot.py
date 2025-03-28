@@ -17,6 +17,7 @@ import concurrent.futures
 import asyncio
 import httpx
 import requests
+import gc  # Add missing gc import for garbage collection
 
 # Load environment variables from .env file if it exists
 try:
@@ -865,14 +866,40 @@ def stylish_bio_black_heart(text):
     """Create a stylish bio name with the 'BLACK HEART' theme."""
     styled_text = ""
     
-    for i, char in enumerate(text):
-        if char.isalpha():
-            if i % 3 == 0:
-                styled_text += "𝚩" + char.upper()
-            elif i % 3 == 1:
-                styled_text += "𝐋" + char.upper()
-            elif i % 3 == 2:
-                styled_text += "𝚲" + char.upper()
+    # Special mapping for specific characters in KRISHNA
+    char_map = {
+        'K': '𝚩K',
+        'R': '𝐋R',
+        'I': '𝚲I',
+        'S': '𝚩S',
+        'H': '𝐋H',
+        'N': '𝚲N',
+        'A': '𝚩A',
+        # Add mappings for remaining letters
+        'B': '𝚩B',
+        'C': '𝐋C',
+        'D': '𝚲D',
+        'E': '𝚩E',
+        'F': '𝐋F',
+        'G': '𝚲G',
+        'J': '𝚩J',
+        'L': '𝐋L',
+        'M': '𝚲M',
+        'O': '𝚩O',
+        'P': '𝐋P',
+        'Q': '𝚲Q',
+        'T': '𝚩T',
+        'U': '𝐋U',
+        'V': '𝚲V',
+        'W': '𝚩W',
+        'X': '𝐋X',
+        'Y': '𝚲Y',
+        'Z': '𝚩Z'
+    }
+    
+    for char in text.upper():
+        if char in char_map:
+            styled_text += char_map[char]
         else:
             styled_text += char
     
