@@ -2,6 +2,13 @@
 # Exit on error
 set -e
 
+# Enable debug mode
+set -x
+
+echo "=== Starting Font Bot Deployment ==="
+echo "Current time: $(date)"
+echo "Python version: $(python --version)"
+
 echo "Cleaning up any existing processes..."
 # Try to find and kill any existing Python processes (safely)
 pkill -f "python bot.py" || echo "No existing processes found to clean up"
@@ -14,23 +21,65 @@ echo "Starting Telegram Bot with auto-restart..."
 # Set the maximum number of restart attempts
 MAX_RESTARTS=5
 restart_count=0
+last_restart_time=0
+MIN_RESTART_INTERVAL=30  # Minimum seconds between restarts
+
+# Function to check if bot is running
+check_bot_status() {
+    if pgrep -f "python bot.py" > /dev/null; then
+        echo "Bot process is running"
+        return 0
+    else
+        echo "Bot process is not running"
+        return 1
+    fi
+}
 
 # Restart loop
 while [ $restart_count -lt $MAX_RESTARTS ]; do
-    echo "Starting bot (attempt $((restart_count+1))/$MAX_RESTARTS)..."
+    current_time=$(date +%s)
     
-    # Start the bot and capture its exit code
-    python bot.py || true
+    # Check if enough time has passed since last restart
+    if [ $((current_time - last_restart_time)) -lt $MIN_RESTART_INTERVAL ]; then
+        wait_time=$((MIN_RESTART_INTERVAL - (current_time - last_restart_time)))
+        echo "Waiting $wait_time seconds before next restart attempt..."
+        sleep $wait_time
+    fi
     
-    # Increment restart count
+    echo "=== Starting bot (attempt $((restart_count+1))/$MAX_RESTARTS) ==="
+    echo "Current time: $(date)"
+    
+    # Start the bot in the background and capture its PID
+    python bot.py > bot.log 2>&1 &
+    BOT_PID=$!
+    
+    # Wait a few seconds to see if the bot starts properly
+    sleep 5
+    
+    # Check if bot is running
+    if check_bot_status; then
+        echo "Bot started successfully with PID: $BOT_PID"
+        echo "Bot logs:"
+        tail -n 20 bot.log
+    else
+        echo "Bot failed to start properly"
+        echo "Last 20 lines of bot log:"
+        tail -n 20 bot.log
+    fi
+    
+    # Update restart count and time
     restart_count=$((restart_count+1))
+    last_restart_time=$(date +%s)
     
     # Only restart if we haven't reached the maximum
     if [ $restart_count -lt $MAX_RESTARTS ]; then
-        echo "Bot exited unexpectedly. Restarting in 10 seconds..."
+        echo "Bot exited unexpectedly. Waiting 10 seconds before restart..."
         sleep 10
     else
         echo "Maximum restart attempts reached. Please check logs for errors."
+        echo "Final bot log:"
+        cat bot.log
+        exit 1
     fi
 done
 

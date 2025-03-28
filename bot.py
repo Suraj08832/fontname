@@ -2623,61 +2623,66 @@ def run_bot():
     return True
 
 def send_message(chat_id, text, reply_markup=None):
-    """Send a message using the Telegram Bot API directly."""
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    data = {
-        'chat_id': chat_id,
-        'text': text,
-        'parse_mode': 'HTML'  # Using HTML parsing is more reliable than Markdown
-    }
+    """Send a message with improved error handling and retries"""
+    max_retries = 3
+    retry_delay = 2  # seconds
     
-    if reply_markup:
-        data['reply_markup'] = reply_markup
-    
-    # Set a longer timeout for API calls
-    timeout = 30  # seconds
-    
-    try:
-        import requests
-        response = requests.post(url, json=data, timeout=timeout)
-        result = response.json()
-        if not result.get('ok'):
-            print(f"Error sending message: {result.get('description')}")
-            
-            # Handle "message too long" error
-            if "message is too long" in str(result.get('description', '')).lower():
-                # Split message and send in parts
-                chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
-                for chunk in chunks:
-                    send_message(chat_id, chunk, None if chunk != chunks[-1] else reply_markup)
-                return result
-            
-            # Handle rate limit errors
-            if "too many requests" in str(result.get('description', '')).lower():
-                print("Rate limited by Telegram API. Sleeping for 3 seconds...")
-                time.sleep(3)
-                # Try again with a recursive call (once)
-                return send_message(chat_id, text, reply_markup)
-                
-        return result
-    except requests.exceptions.Timeout:
-        print(f"Timeout when sending message to chat {chat_id}. Retrying once...")
-        time.sleep(2)
+    for attempt in range(max_retries):
         try:
-            # Try again with a longer timeout
-            response = requests.post(url, json=data, timeout=timeout * 2)
-            return response.json()
+            # Add timeout to prevent hanging
+            response = requests.post(
+                f"https://api.telegram.org/bot{API_TOKEN}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": text,
+                    "parse_mode": "HTML",
+                    "reply_markup": reply_markup
+                },
+                timeout=10  # 10 second timeout
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            
+            # Handle specific error cases
+            if response.status_code == 429:  # Rate limit
+                retry_after = int(response.headers.get('Retry-After', retry_delay))
+                print(f"Rate limited. Waiting {retry_after} seconds...")
+                time.sleep(retry_after)
+                continue
+                
+            if response.status_code == 502:  # Bad Gateway
+                print(f"Bad Gateway error, attempt {attempt + 1}/{max_retries}")
+                time.sleep(retry_delay)
+                continue
+                
+            if response.status_code == 503:  # Service Unavailable
+                print(f"Service Unavailable, attempt {attempt + 1}/{max_retries}")
+                time.sleep(retry_delay)
+                continue
+                
+            # For other errors, log and try again
+            print(f"Error sending message: {response.status_code} - {response.text}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+                
+        except requests.exceptions.Timeout:
+            print(f"Timeout sending message, attempt {attempt + 1}/{max_retries}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+                
+        except requests.exceptions.ConnectionError:
+            print(f"Connection error, attempt {attempt + 1}/{max_retries}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+                
         except Exception as e:
-            print(f"Error on retry: {e}")
-            return None
-    except requests.exceptions.ConnectionError:
-        print(f"Connection error when sending message to chat {chat_id}. API might be unavailable.")
-        time.sleep(5)  # Wait longer for connection issues
-        return None
-    except Exception as e:
-        print(f"Error sending message: {e}")
-        traceback.print_exc()
-        return None
+            print(f"Unexpected error sending message: {str(e)}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+    
+    print("Failed to send message after all retries")
+    return None
 
 def create_inline_keyboard(buttons, rows_of=4):
     """
@@ -2988,87 +2993,101 @@ def bio_styles_handler(update, chat_id, text):
     )
 
 def keepalive_thread(api_token):
-    """A dedicated thread to periodically check if the bot is still responsive."""
-    print("Starting keepalive thread...")
-    
-    # Time without activity before trying to ping
-    check_interval = 120  # 2 minutes
-    restart_threshold = 600  # 10 minutes without activity
+    """Monitor bot activity and keep it alive"""
+    last_activity = time.time()
+    check_interval = 120  # Check every 2 minutes
     
     while True:
         try:
-            # Check if there has been recent activity
-            current_time = datetime.now()
-            time_since_activity = (current_time - last_activity_time).total_seconds()
-            
-            if time_since_activity > check_interval:
-                print(f"No activity for {time_since_activity:.1f} seconds. Sending ping...")
+            current_time = time.time()
+            if current_time - last_activity > check_interval:
+                print("No activity detected for 2 minutes. Checking bot status...")
                 
-                # Try to ping the API
-                me_url = f"https://api.telegram.org/bot{api_token}/getMe"
-                try:
-                    ping_response = requests.get(me_url, timeout=30)
-                    if ping_response.status_code == 200:
-                        # Reset activity time to avoid unnecessary pings
-                        update_activity()
-                        print("Ping successful - bot is responsive")
-                    else:
-                        print(f"Ping failed with status {ping_response.status_code}")
-                except Exception as e:
-                    print(f"Error during ping: {e}")
-                    
-                    # If no activity for too long, suggest restart
-                    if time_since_activity > restart_threshold:
-                        print("Bot appears to be unresponsive. Suggesting restart.")
-                        # In a production environment, you could raise a notification here
+                # Try to get bot info to check if it's responsive
+                response = requests.get(
+                    f"https://api.telegram.org/bot{api_token}/getMe",
+                    timeout=10
+                )
+                
+                if response.status_code != 200:
+                    print("Bot appears to be unresponsive. Attempting to restart...")
+                    # Trigger a restart by raising an exception
+                    raise Exception("Bot unresponsive")
+                
+                print("Bot is still responsive")
+                last_activity = current_time
             
-            # Sleep before next check
-            time.sleep(60)  # Check every minute
+            time.sleep(30)  # Check every 30 seconds
             
         except Exception as e:
-            print(f"Error in keepalive thread: {e}")
-            time.sleep(120)  # Wait longer if there was an error
+            print(f"Keepalive thread error: {str(e)}")
+            time.sleep(5)  # Wait before retrying
+            continue
 
 def main():
-    """Start the bot."""
+    """Start the bot with improved error handling and keepalive"""
+    print("\n=== Font Bot Starting ===")
+    print(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Python version: {sys.version}")
+    print(f"Process ID: {os.getpid()}")
+    
     try:
-        # Print diagnostic information
-        print(f"Python version: {sys.version}")
-        print(f"Process ID: {os.getpid()}")
-        
         # Start HTTP server in a separate thread for Render
+        print("\nStarting HTTP server...")
         server_thread = threading.Thread(target=run_http_server)
         server_thread.daemon = True
         server_thread.start()
+        print("HTTP server started successfully")
         
         # Start watchdog in a separate thread
+        print("\nStarting watchdog...")
         watchdog_thread = threading.Thread(target=watchdog)
         watchdog_thread.daemon = True
         watchdog_thread.start()
-        
-        # Get TOKEN from environment or default
-        api_token = os.environ.get('TOKEN', TOKEN)
+        print("Watchdog started successfully")
         
         # Start keepalive thread
-        keepalive_thread_obj = threading.Thread(target=keepalive_thread, args=(api_token,))
-        keepalive_thread_obj.daemon = True
-        keepalive_thread_obj.start()
+        print("\nStarting keepalive thread...")
+        keepalive = threading.Thread(target=keepalive_thread, args=(API_TOKEN,), daemon=True)
+        keepalive.start()
+        print("Keepalive thread started successfully")
         
-        # Update activity timestamp
-        update_activity()
+        # Initialize bot
+        print("\nInitializing bot...")
+        application = Application.builder().token(API_TOKEN).build()
         
-        # Start the bot with direct polling
-        success = run_bot()
+        # Add handlers
+        print("\nRegistering command handlers...")
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("fancy", fancy_name))
+        application.add_handler(CommandHandler("alphabet", show_alphabet))
+        application.add_handler(CommandHandler("az_fonts", az_fonts))
+        application.add_handler(CommandHandler("name_fonts", name_all_fonts))
+        application.add_handler(CommandHandler("bio_styles", bio_styles))
+        application.add_handler(CallbackQueryHandler(button_callback))
+        print("All handlers registered successfully")
         
-        # If run_bot returns False, there was a critical error
-        if not success:
-            logging.error("Bot polling returned with error. Exiting.")
-            sys.exit(1)
+        # Start the bot
+        print("\nStarting bot polling...")
+        print("Bot is now ready to receive commands!")
+        print("Available commands:")
+        print("- /start - Start the bot")
+        print("- /help - Show help message")
+        print("- /fancy - Generate fancy name")
+        print("- /alphabet - Show alphabet in random style")
+        print("- /az_fonts - Show letter in all styles")
+        print("- /name_fonts - Show name in all styles")
+        print("- /bio_styles - Show bio styles")
+        
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
-        logging.error(f"Critical error in main function: {str(e)}", exc_info=True)
-        print(f"Critical error: {str(e)}")
-        sys.exit(1)  # Exit with error code to trigger Render restart
+        print(f"\nError in main: {str(e)}")
+        traceback.print_exc()
+        print("\nAttempting to restart bot in 5 seconds...")
+        time.sleep(5)
+        main()  # Restart the bot
 
 if __name__ == '__main__':
     main() 
