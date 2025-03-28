@@ -18,7 +18,6 @@ import asyncio
 import httpx
 import requests
 import gc  # Add missing gc import for garbage collection
-import telegram.error
 
 # Load environment variables from .env file if it exists
 try:
@@ -1980,7 +1979,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         query = update.callback_query
-        await query.answer()
         
         # Parse the callback data to determine what to copy
         data = query.data.split('_')
@@ -1989,41 +1987,62 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Handle font style copying
             style_index = int(data[1])
             styled_fonts = context.user_data.get('styled_fonts', [])
-            if style_index < len(styled_fonts):
+            if 0 <= style_index < len(styled_fonts):
                 styled_text = styled_fonts[style_index]
-                await query.message.reply_text(styled_text)
+                await query.message.reply_text(
+                    f"Here's your styled text:\n\n{styled_text}",
+                    quote=False
+                )
+                await query.answer("Style copied!")
             else:
-                await query.message.reply_text("Style not found. Please try again.")
+                await query.answer("Style not found. Please try again.", show_alert=True)
+                
         elif data[0] == 'name':
             # Handle fancy name copying
             name_index = int(data[1])
             styled_names = context.user_data.get('styled_names', [])
-            if name_index < len(styled_names):
+            if 0 <= name_index < len(styled_names):
                 styled_name = styled_names[name_index]
-                await query.message.reply_text(styled_name)
+                await query.message.reply_text(
+                    f"Here's your styled name:\n\n{styled_name}",
+                    quote=False
+                )
+                await query.answer("Name style copied!")
             else:
-                await query.message.reply_text("Style not found. Please try again.")
+                await query.answer("Style not found. Please try again.", show_alert=True)
         elif data[0] == 'letter':
             # Handle single letter copying
             letter_index = int(data[1])
             styled_letters = context.user_data.get('styled_letters', [])
-            if letter_index < len(styled_letters):
+            if 0 <= letter_index < len(styled_letters):
                 styled_letter = styled_letters[letter_index]
-                await query.message.reply_text(styled_letter)
+                await query.message.reply_text(
+                    f"Here's your styled letter:\n\n{styled_letter}",
+                    quote=False
+                )
+                await query.answer("Letter style copied!")
             else:
-                await query.message.reply_text("Style not found. Please try again.")
+                await query.answer("Style not found. Please try again.", show_alert=True)
         elif data[0] == 'bio':
             # Handle bio style copying
             bio_index = int(data[1])
             fancy_bios = context.user_data.get('fancy_bios', [])
-            if bio_index < len(fancy_bios):
+            if 0 <= bio_index < len(fancy_bios):
                 styled_bio = fancy_bios[bio_index]
-                await query.message.reply_text(styled_bio)
+                await query.message.reply_text(
+                    f"Here's your styled bio:\n\n{styled_bio}",
+                    quote=False
+                )
+                await query.answer("Bio style copied!")
             else:
-                await query.message.reply_text("Style not found. Please try again.")
+                await query.answer("Style not found. Please try again.", show_alert=True)
         elif data[0] == 'style':
             # Handle style font copying
             try:
+                if len(data) < 3:
+                    await query.answer("Invalid style data. Please try again.", show_alert=True)
+                    return
+                    
                 style_name = data[1]
                 name = '_'.join(data[2:])  # Join remaining parts as the name
                 
@@ -2031,7 +2050,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 style_map = {
                     'double': 'double_struck',
                     'mixed': 'mixed_case',
-                    # Add more mappings as needed
+                    'serif': 'serif_bold',
+                    'sans': 'sans_serif',
+                    'script': 'script_bold',
+                    'frak': 'fraktur',
+                    'mono': 'monospace'
                 }
                 
                 # Check if we need to map a shortened name
@@ -2040,22 +2063,29 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 style_func = FONT_STYLES.get(style_name)
                 if style_func:
-                    styled_name = ''.join(style_func(c) for c in name)
-                    await query.message.reply_text(styled_name)
+                    # Apply the style function safely
+                    try:
+                        styled_name = ''.join(style_func(c) if c.isalpha() else c for c in name)
+                        await query.message.reply_text(
+                            f"Here's your name in {style_name.replace('_', ' ')} style:\n\n{styled_name}",
+                            quote=False
+                        )
+                        await query.answer("Style copied!")
+                    except Exception as e:
+                        logging.error(f"Error applying style {style_name}: {str(e)}")
+                        await query.answer(f"Error applying style. Please try a different one.", show_alert=True)
                 else:
-                    await query.message.reply_text(f"Style '{style_name}' not found.")
+                    await query.answer(f"Style '{style_name}' not found. Please try again.", show_alert=True)
             except Exception as e:
                 logging.error(f"Error in style processing: {str(e)}")
-                await query.message.reply_text("Error processing style. Please try again.")
+                await query.answer("Error processing style. Please try again.", show_alert=True)
         else:
-            await query.message.reply_text("Unknown button type.")
+            await query.answer("Unknown button type. Please try again.", show_alert=True)
     
     except Exception as e:
         logging.error(f"Error in button_callback: {str(e)}", exc_info=True)
         try:
-            await update.effective_message.reply_text(
-                "Sorry, there was an error processing your request. Please try again."
-            )
+            await query.answer("An error occurred. Please try again.", show_alert=True)
         except Exception:
             logging.error("Failed to send error message to user", exc_info=True)
 
@@ -2624,66 +2654,61 @@ def run_bot():
     return True
 
 def send_message(chat_id, text, reply_markup=None):
-    """Send a message with improved error handling and retries"""
-    max_retries = 3
-    retry_delay = 2  # seconds
+    """Send a message using the Telegram Bot API directly."""
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    data = {
+        'chat_id': chat_id,
+        'text': text,
+        'parse_mode': 'HTML'  # Using HTML parsing is more reliable than Markdown
+    }
     
-    for attempt in range(max_retries):
+    if reply_markup:
+        data['reply_markup'] = reply_markup
+    
+    # Set a longer timeout for API calls
+    timeout = 30  # seconds
+    
+    try:
+        import requests
+        response = requests.post(url, json=data, timeout=timeout)
+        result = response.json()
+        if not result.get('ok'):
+            print(f"Error sending message: {result.get('description')}")
+            
+            # Handle "message too long" error
+            if "message is too long" in str(result.get('description', '')).lower():
+                # Split message and send in parts
+                chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+                for chunk in chunks:
+                    send_message(chat_id, chunk, None if chunk != chunks[-1] else reply_markup)
+                return result
+            
+            # Handle rate limit errors
+            if "too many requests" in str(result.get('description', '')).lower():
+                print("Rate limited by Telegram API. Sleeping for 3 seconds...")
+                time.sleep(3)
+                # Try again with a recursive call (once)
+                return send_message(chat_id, text, reply_markup)
+                
+        return result
+    except requests.exceptions.Timeout:
+        print(f"Timeout when sending message to chat {chat_id}. Retrying once...")
+        time.sleep(2)
         try:
-            # Add timeout to prevent hanging
-            response = requests.post(
-                f"https://api.telegram.org/bot{API_TOKEN}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": text,
-                    "parse_mode": "HTML",
-                    "reply_markup": reply_markup
-                },
-                timeout=10  # 10 second timeout
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            
-            # Handle specific error cases
-            if response.status_code == 429:  # Rate limit
-                retry_after = int(response.headers.get('Retry-After', retry_delay))
-                print(f"Rate limited. Waiting {retry_after} seconds...")
-                time.sleep(retry_after)
-                continue
-                
-            if response.status_code == 502:  # Bad Gateway
-                print(f"Bad Gateway error, attempt {attempt + 1}/{max_retries}")
-                time.sleep(retry_delay)
-                continue
-                
-            if response.status_code == 503:  # Service Unavailable
-                print(f"Service Unavailable, attempt {attempt + 1}/{max_retries}")
-                time.sleep(retry_delay)
-                continue
-                
-            # For other errors, log and try again
-            print(f"Error sending message: {response.status_code} - {response.text}")
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay)
-                
-        except requests.exceptions.Timeout:
-            print(f"Timeout sending message, attempt {attempt + 1}/{max_retries}")
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay)
-                
-        except requests.exceptions.ConnectionError:
-            print(f"Connection error, attempt {attempt + 1}/{max_retries}")
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay)
-                
+            # Try again with a longer timeout
+            response = requests.post(url, json=data, timeout=timeout * 2)
+            return response.json()
         except Exception as e:
-            print(f"Unexpected error sending message: {str(e)}")
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay)
-    
-    print("Failed to send message after all retries")
-    return None
+            print(f"Error on retry: {e}")
+            return None
+    except requests.exceptions.ConnectionError:
+        print(f"Connection error when sending message to chat {chat_id}. API might be unavailable.")
+        time.sleep(5)  # Wait longer for connection issues
+        return None
+    except Exception as e:
+        print(f"Error sending message: {e}")
+        traceback.print_exc()
+        return None
 
 def create_inline_keyboard(buttons, rows_of=4):
     """
@@ -2993,151 +3018,38 @@ def bio_styles_handler(update, chat_id, text):
         reply_markup=reply_markup
     )
 
-def keepalive_thread(token):
-    """Monitor bot activity and keep it alive"""
-    last_activity = time.time()
-    check_interval = 120  # Check every 2 minutes
-    
-    while True:
-        try:
-            current_time = time.time()
-            if current_time - last_activity > check_interval:
-                print("No activity detected for 2 minutes. Checking bot status...")
-                
-                # Try to get bot info to check if it's responsive
-                response = requests.get(
-                    f"https://api.telegram.org/bot{token}/getMe",
-                    timeout=10
-                )
-                
-                if response.status_code != 200:
-                    print("Bot appears to be unresponsive. Attempting to restart...")
-                    # Trigger a restart by raising an exception
-                    raise Exception("Bot unresponsive")
-                
-                print("Bot is still responsive")
-                last_activity = current_time
-            
-            time.sleep(30)  # Check every 30 seconds
-            
-        except Exception as e:
-            print(f"Keepalive thread error: {str(e)}")
-            time.sleep(5)  # Wait before retrying
-            continue
-
 def main():
-    """Start the bot with improved error handling and keepalive"""
-    print("\n=== Font Bot Starting ===")
-    print(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Python version: {sys.version}")
-    print(f"Process ID: {os.getpid()}")
-    
+    """Start the bot."""
     try:
-        # Get TOKEN from environment or default
-        api_token = os.environ.get('TOKEN', TOKEN)
-        if not api_token:
-            raise ValueError("No API token found in environment variables or default TOKEN")
-        print("API token loaded successfully")
-        
-        # Test API connection and delete webhook
-        print("\nTesting API connection and cleaning up webhooks...")
-        try:
-            # Delete webhook first
-            response = requests.post(
-                f"https://api.telegram.org/bot{api_token}/deleteWebhook",
-                timeout=10
-            )
-            if response.status_code != 200:
-                print(f"Warning: Failed to delete webhook: {response.text}")
-            
-            # Then test connection
-            response = requests.get(
-                f"https://api.telegram.org/bot{api_token}/getMe",
-                timeout=10
-            )
-            if response.status_code != 200:
-                raise ValueError(f"Failed to connect to Telegram API: {response.text}")
-            print("API connection successful")
-        except Exception as e:
-            print(f"Warning during API setup: {str(e)}")
-            time.sleep(5)  # Wait before retrying
+        # Print diagnostic information
+        print(f"Python version: {sys.version}")
+        print(f"Process ID: {os.getpid()}")
         
         # Start HTTP server in a separate thread for Render
-        print("\nStarting HTTP server...")
         server_thread = threading.Thread(target=run_http_server)
         server_thread.daemon = True
         server_thread.start()
-        print("HTTP server started successfully")
         
         # Start watchdog in a separate thread
-        print("\nStarting watchdog...")
         watchdog_thread = threading.Thread(target=watchdog)
         watchdog_thread.daemon = True
         watchdog_thread.start()
-        print("Watchdog started successfully")
         
-        # Start keepalive thread
-        print("\nStarting keepalive thread...")
-        keepalive = threading.Thread(target=keepalive_thread, args=(api_token,), daemon=True)
-        keepalive.start()
-        print("Keepalive thread started successfully")
+        # Update activity timestamp
+        update_activity()
         
-        # Initialize bot
-        print("\nInitializing bot...")
-        application = Application.builder().token(api_token).build()
+        # Start the bot with direct polling
+        success = run_bot()
         
-        # Add handlers
-        print("\nRegistering command handlers...")
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("help", help_command))
-        application.add_handler(CommandHandler("fancy", fancy_name))
-        application.add_handler(CommandHandler("alphabet", show_alphabet))
-        application.add_handler(CommandHandler("az_fonts", az_fonts))
-        application.add_handler(CommandHandler("name_fonts", name_all_fonts))
-        application.add_handler(CommandHandler("bio_styles", bio_styles))
-        application.add_handler(CallbackQueryHandler(button_callback))
-        print("All handlers registered successfully")
-        
-        # Start the bot
-        print("\nStarting bot polling...")
-        print("Bot is now ready to receive commands!")
-        print("Available commands:")
-        print("- /start - Start the bot")
-        print("- /help - Show help message")
-        print("- /fancy - Generate fancy name")
-        print("- /alphabet - Show alphabet in random style")
-        print("- /az_fonts - Show letter in all styles")
-        print("- /name_fonts - Show name in all styles")
-        print("- /bio_styles - Show bio styles")
-        
-        # Start polling with error handling
-        try:
-            print("\nStarting polling...")
-            application.run_polling(allowed_updates=Update.ALL_TYPES)
-        except telegram.error.Conflict as e:
-            print(f"Conflict error detected: {str(e)}")
-            print("Attempting to resolve conflict...")
-            # Try to delete webhook again
-            try:
-                response = requests.post(
-                    f"https://api.telegram.org/bot{api_token}/deleteWebhook",
-                    timeout=10
-                )
-                print(f"Webhook deletion response: {response.text}")
-            except Exception as webhook_error:
-                print(f"Error deleting webhook: {str(webhook_error)}")
-            raise  # Re-raise to trigger restart
-        except Exception as e:
-            print(f"Error during polling: {str(e)}")
-            traceback.print_exc()
-            raise
+        # If run_bot returns False, there was a critical error
+        if not success:
+            logging.error("Bot polling returned with error. Exiting.")
+            sys.exit(1)
         
     except Exception as e:
-        print(f"\nError in main: {str(e)}")
-        traceback.print_exc()
-        print("\nAttempting to restart bot in 5 seconds...")
-        time.sleep(5)
-        main()  # Restart the bot
+        logging.error(f"Critical error in main function: {str(e)}", exc_info=True)
+        print(f"Critical error: {str(e)}")
+        sys.exit(1)  # Exit with error code to trigger Render restart
 
 if __name__ == '__main__':
     main() 
