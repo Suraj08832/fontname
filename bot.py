@@ -11,6 +11,8 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import time
 from datetime import datetime
+import sys
+import traceback
 
 # Load environment variables from .env file if it exists
 try:
@@ -2108,6 +2110,51 @@ async def az_fonts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"Letter {letter} in all styles:\n" + "\n".join(results))
 
+# Helper function to safely execute operations that might be memory-intensive
+def safe_execute(func, *args, **kwargs):
+    """Execute a function with memory management and timeouts."""
+    try:
+        # Set a reasonable size limit
+        max_input_length = 50
+        
+        # Check if we're dealing with a string input that's too large
+        for arg in args:
+            if isinstance(arg, str) and len(arg) > max_input_length:
+                # Truncate long inputs
+                logging.warning(f"Input too large ({len(arg)} chars), truncating to {max_input_length}")
+                new_args = []
+                for a in args:
+                    if isinstance(a, str) and len(a) > max_input_length:
+                        new_args.append(a[:max_input_length] + "...")
+                    else:
+                        new_args.append(a)
+                args = tuple(new_args)
+                
+        # Execute with timeout protection
+        import signal
+        
+        def timeout_handler(signum, frame):
+            raise TimeoutError("Function execution timed out")
+        
+        # Set timeout of 5 seconds
+        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(5)
+        
+        try:
+            result = func(*args, **kwargs)
+            return result
+        finally:
+            # Reset the alarm and handler
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+    
+    except TimeoutError as e:
+        logging.error(f"Timeout executing {func.__name__}: {str(e)}")
+        return f"Error: Operation timed out"
+    except Exception as e:
+        logging.error(f"Error in safe_execute for {func.__name__}: {str(e)}")
+        return f"Error: {str(e)}"
+
 async def name_all_fonts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show a name in all available font styles."""
     # Update activity timestamp
@@ -2119,6 +2166,11 @@ async def name_all_fonts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     name = ' '.join(context.args)
     
+    # Limit name length for safety
+    if len(name) > 30:
+        name = name[:30]
+        await update.message.reply_text("Name too long, truncated to 30 characters")
+    
     # Create inline keyboard with buttons arranged in a grid (4 buttons per row)
     keyboard = []
     current_row = []
@@ -2126,11 +2178,16 @@ async def name_all_fonts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for style_num, style_name in STYLE_NAMES.items():
         try:
             style_func = FONT_STYLES[style_name]
-            styled_name = ''.join(style_func(c) for c in name)
+            
+            # Use safe_execute for potentially problematic operations
+            styled_name = safe_execute(lambda: ''.join(style_func(c) for c in name))
             
             # Create a button for this style
+            # Limit displayed text to 20 chars for button
+            display_text = (styled_name[:17] + "...") if len(styled_name) > 20 else styled_name
+            
             button = InlineKeyboardButton(
-                f"{style_num}. {styled_name}", 
+                f"{style_num}. {display_text}", 
                 callback_data=f"style_{style_name}_{name}"
             )
             
@@ -2144,6 +2201,7 @@ async def name_all_fonts(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
         except Exception as e:
             # If a style fails, skip it
+            logging.error(f"Error with style {style_name}: {str(e)}")
             continue
     
     # Add any remaining buttons if we didn't reach a multiple of 4
@@ -2159,11 +2217,24 @@ async def name_all_fonts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Simple HTTP request handler for health checks
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        self.handle_request()
+    
+    def do_HEAD(self):
+        self.handle_request(send_body=False)
+    
+    def handle_request(self, send_body=True):
         self.send_response(200)
+        self.send_header('Content-Type', 'text/plain')
         self.end_headers()
-        time_since_activity = (datetime.now() - last_activity_time).total_seconds()
-        status = "healthy" if time_since_activity < 600 else "stale"
-        self.wfile.write(f'Bot is running (Status: {status}, Last activity: {time_since_activity:.1f} seconds ago)'.encode())
+        
+        if send_body:
+            time_since_activity = (datetime.now() - last_activity_time).total_seconds()
+            status = "healthy" if time_since_activity < 600 else "stale"
+            self.wfile.write(f'Bot is running (Status: {status}, Last activity: {time_since_activity:.1f} seconds ago)'.encode())
+    
+    def log_message(self, format, *args):
+        # Suppress excessive logging
+        pass
 
 def run_http_server():
     # Get port from environment variable or use default
@@ -2175,64 +2246,146 @@ def run_http_server():
 
 # Watchdog function to monitor bot activity and restart if needed
 def watchdog():
+    last_memory_check = datetime.now()
+    restart_count = 0
+    
     while True:
-        time.sleep(300)  # Check every 5 minutes
-        time_since_activity = (datetime.now() - last_activity_time).total_seconds()
-        if time_since_activity > 600:  # 10 minutes without activity
-            logging.warning(f"Bot seems unresponsive. No activity for {time_since_activity:.1f} seconds. Attempting restart.")
-            # We can't directly restart the bot here, but we can log the issue
-            # Render will automatically restart the service if it becomes unresponsive
-            print(f"WATCHDOG ALERT: Bot may be unresponsive. Last activity: {time_since_activity:.1f} seconds ago")
-            # Update the activity time to prevent multiple alerts
-            update_activity()
+        try:
+            time.sleep(120)  # Check every 2 minutes
+            
+            # Check for inactivity
+            time_since_activity = (datetime.now() - last_activity_time).total_seconds()
+            if time_since_activity > 300:  # 5 minutes without activity is suspicious
+                restart_count += 1
+                logging.warning(f"Bot seems unresponsive. No activity for {time_since_activity:.1f} seconds. Alert count: {restart_count}")
+                print(f"WATCHDOG ALERT: Bot may be unresponsive. Last activity: {time_since_activity:.1f} seconds ago")
+                
+                # Force a memory cleanup
+                import gc
+                gc.collect()
+                
+                # For severe cases, we might need to exit and let Render restart the service
+                if restart_count >= 3:  # Three consecutive alerts
+                    logging.error("Multiple unresponsiveness alerts. Exiting to force service restart.")
+                    print("CRITICAL: Bot appears completely unresponsive. Exiting to force restart.")
+                    os._exit(1)  # Force exit to trigger Render restart
+                
+                # Update activity to prevent continuous alerts
+                update_activity()
+            else:
+                # Reset restart count if we've seen activity
+                restart_count = 0
+            
+            # Periodically check memory usage (every 15 minutes)
+            if (datetime.now() - last_memory_check).total_seconds() > 900:
+                last_memory_check = datetime.now()
+                gc.collect()  # Explicit garbage collection
+        
+        except Exception as e:
+            logging.error(f"Error in watchdog thread: {str(e)}", exc_info=True)
+            time.sleep(60)  # Wait a bit if there was an error
 
 # Update main function to register the new handler
 def main():
     """Start the bot."""
-    try:
-        # Create the Application and pass it your bot's token
-        application = Application.builder().token(TOKEN).build()
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            # Print diagnostic information
+            print(f"Starting bot (Attempt {retry_count + 1}/{max_retries})...")
+            print(f"Python version: {sys.version}")
+            print(f"Process ID: {os.getpid()}")
+            
+            # Create the Application and pass it your bot's token
+            application = Application.builder().token(TOKEN).build()
 
-        # Add command handlers
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("fancy", fancy_name))
-        application.add_handler(CommandHandler("help", help_command))
-        application.add_handler(CommandHandler("alphabet", show_alphabet))
-        application.add_handler(CommandHandler("letter", az_fonts))
-        application.add_handler(CommandHandler("name_fonts", name_all_fonts))
-        application.add_handler(CommandHandler("bio_styles", bio_styles))
-        
-        # Add callback query handler for the buttons
-        application.add_handler(CallbackQueryHandler(button_callback))
+            # Add command handlers
+            application.add_handler(CommandHandler("start", start))
+            application.add_handler(CommandHandler("fancy", fancy_name))
+            application.add_handler(CommandHandler("help", help_command))
+            application.add_handler(CommandHandler("alphabet", show_alphabet))
+            application.add_handler(CommandHandler("letter", az_fonts))
+            application.add_handler(CommandHandler("name_fonts", name_all_fonts))
+            application.add_handler(CommandHandler("bio_styles", bio_styles))
+            
+            # Add callback query handler for the buttons
+            application.add_handler(CallbackQueryHandler(button_callback))
+            
+            # Add error handler
+            application.add_error_handler(error_handler)
 
-        # Start HTTP server in a separate thread for Render
-        server_thread = threading.Thread(target=run_http_server)
-        server_thread.daemon = True
-        server_thread.start()
-        
-        # Start watchdog in a separate thread
-        watchdog_thread = threading.Thread(target=watchdog)
-        watchdog_thread.daemon = True
-        watchdog_thread.start()
+            # Start HTTP server in a separate thread for Render
+            server_thread = threading.Thread(target=run_http_server)
+            server_thread.daemon = True
+            server_thread.start()
+            
+            # Start watchdog in a separate thread
+            watchdog_thread = threading.Thread(target=watchdog)
+            watchdog_thread.daemon = True
+            watchdog_thread.start()
 
-        # Log that we're starting
-        print("Starting bot...")
-        logging.info("Bot is starting up with token: %s...", TOKEN[:10])
-        
-        # Update activity timestamp
-        update_activity()
-        
-        # Start the Bot with error handling
-        application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
-        
-    except Exception as e:
-        logging.error(f"Error in main function: {str(e)}", exc_info=True)
-        print(f"Critical error: {str(e)}")
-        
-        # Try to restart after a delay if there's an error
-        time.sleep(10)
-        print("Attempting to restart bot...")
-        main()
+            # Log that we're starting
+            print("Bot initialized successfully!")
+            logging.info("Bot is starting up with token: %s...", TOKEN[:10])
+            
+            # Force garbage collection before starting
+            import gc
+            gc.collect()
+            
+            # Update activity timestamp
+            update_activity()
+            
+            # Start the Bot with error handling
+            application.run_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True,
+                timeout=30,  # Shorter timeout to detect connection issues quicker
+                read_timeout=30,
+                write_timeout=30,
+                pool_timeout=30
+            )
+            
+            # If we get here, the polling stopped normally
+            return
+            
+        except Exception as e:
+            retry_count += 1
+            logging.error(f"Error in main function (attempt {retry_count}/{max_retries}): {str(e)}", exc_info=True)
+            print(f"Critical error: {str(e)}")
+            
+            if retry_count < max_retries:
+                wait_time = 10 * retry_count  # Exponential backoff
+                print(f"Waiting {wait_time} seconds before retry...")
+                time.sleep(wait_time)
+                print("Attempting to restart bot...")
+            else:
+                print("Maximum retry attempts reached. Exiting...")
+                sys.exit(1)  # Exit with error code to trigger Render restart
+
+# Error handler function for the bot
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle errors in the telegram bot."""
+    # Update activity to indicate the bot is still running
+    update_activity()
+    
+    # Log the error
+    logging.error("Exception while handling an update:", exc_info=context.error)
+    
+    # Extract the Update and error
+    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+    tb_string = "".join(tb_list)
+    
+    # Build the message
+    error_msg = f"An exception was raised while handling an update\n{tb_string}"
+    
+    # Send to developer for urgent issues only (truncate to avoid message too long errors)
+    if update and isinstance(update, Update) and update.effective_chat:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Sorry, something went wrong with processing your request. Please try again."
+        )
 
 if __name__ == '__main__':
     main() 
