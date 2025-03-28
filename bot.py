@@ -2418,7 +2418,7 @@ def run_bot():
     webhook_url = f"https://api.telegram.org/bot{api_token}/deleteWebhook?drop_pending_updates=true"
     try:
         import requests
-        response = requests.get(webhook_url)
+        response = requests.get(webhook_url, timeout=30)
         print(f"Webhook removal response: {response.status_code} {response.text}")
         
         # If unauthorized, print a helpful message
@@ -2443,20 +2443,40 @@ def run_bot():
     # Start polling loop
     last_update_id = 0
     poll_interval = 1.0  # seconds
-    max_errors = 5
+    max_errors = 10  # increased from 5
     consecutive_errors = 0
+    last_successful_request = time.time()
+    ping_interval = 60  # ping the API every 60 seconds if no updates
     
     while True:
         try:
+            current_time = time.time()
+            
+            # Ping the API periodically to keep connection alive
+            if current_time - last_successful_request > ping_interval:
+                print("Sending ping to Telegram API to keep connection alive...")
+                me_url = f"https://api.telegram.org/bot{api_token}/getMe"
+                ping_response = requests.get(me_url, timeout=30)
+                if ping_response.status_code == 200:
+                    print("Ping successful")
+                    last_successful_request = current_time
+                else:
+                    print(f"Ping failed with status {ping_response.status_code}")
+            
             # Reset error counter after successful processing
             if consecutive_errors > 0:
                 consecutive_errors = 0
             
             # Get updates with long polling
             updates_url = f"https://api.telegram.org/bot{api_token}/getUpdates?offset={last_update_id + 1}&timeout=30"
-            response = requests.get(updates_url)
+            
+            # Use a timeout to prevent hanging
+            response = requests.get(updates_url, timeout=35)
             
             if response.status_code == 200:
+                # Update successful request timestamp
+                last_successful_request = time.time()
+                
                 data = response.json()
                 if data.get('ok') and data.get('result'):
                     updates = data['result']
@@ -2568,9 +2588,25 @@ def run_bot():
             elif response.status_code == 401:
                 print("ERROR: Invalid bot token. Check your TOKEN environment variable.")
                 return False
+            elif response.status_code == 429:
+                # Rate limited, wait longer
+                print("Rate limited by Telegram API. Waiting before next poll...")
+                time.sleep(poll_interval * 5)
+            else:
+                print(f"Unexpected status code: {response.status_code}")
+                time.sleep(poll_interval * 2)
             
             # Sleep before next poll
             time.sleep(poll_interval)
+            
+        except requests.exceptions.Timeout:
+            print(f"Timeout error in polling. Network might be slow.")
+            time.sleep(poll_interval * 2)
+            
+        except requests.exceptions.ConnectionError:
+            consecutive_errors += 1
+            print(f"Connection error in polling (attempt {consecutive_errors}/{max_errors}). Telegram API might be unavailable.")
+            time.sleep(poll_interval * 3)  # Wait longer for connection issues
             
         except Exception as e:
             consecutive_errors += 1
@@ -2598,9 +2634,12 @@ def send_message(chat_id, text, reply_markup=None):
     if reply_markup:
         data['reply_markup'] = reply_markup
     
+    # Set a longer timeout for API calls
+    timeout = 30  # seconds
+    
     try:
         import requests
-        response = requests.post(url, json=data)
+        response = requests.post(url, json=data, timeout=timeout)
         result = response.json()
         if not result.get('ok'):
             print(f"Error sending message: {result.get('description')}")
@@ -2612,8 +2651,29 @@ def send_message(chat_id, text, reply_markup=None):
                 for chunk in chunks:
                     send_message(chat_id, chunk, None if chunk != chunks[-1] else reply_markup)
                 return result
+            
+            # Handle rate limit errors
+            if "too many requests" in str(result.get('description', '')).lower():
+                print("Rate limited by Telegram API. Sleeping for 3 seconds...")
+                time.sleep(3)
+                # Try again with a recursive call (once)
+                return send_message(chat_id, text, reply_markup)
                 
         return result
+    except requests.exceptions.Timeout:
+        print(f"Timeout when sending message to chat {chat_id}. Retrying once...")
+        time.sleep(2)
+        try:
+            # Try again with a longer timeout
+            response = requests.post(url, json=data, timeout=timeout * 2)
+            return response.json()
+        except Exception as e:
+            print(f"Error on retry: {e}")
+            return None
+    except requests.exceptions.ConnectionError:
+        print(f"Connection error when sending message to chat {chat_id}. API might be unavailable.")
+        time.sleep(5)  # Wait longer for connection issues
+        return None
     except Exception as e:
         print(f"Error sending message: {e}")
         traceback.print_exc()
@@ -2927,6 +2987,48 @@ def bio_styles_handler(update, chat_id, text):
         reply_markup=reply_markup
     )
 
+def keepalive_thread(api_token):
+    """A dedicated thread to periodically check if the bot is still responsive."""
+    print("Starting keepalive thread...")
+    
+    # Time without activity before trying to ping
+    check_interval = 120  # 2 minutes
+    restart_threshold = 600  # 10 minutes without activity
+    
+    while True:
+        try:
+            # Check if there has been recent activity
+            current_time = datetime.now()
+            time_since_activity = (current_time - last_activity_time).total_seconds()
+            
+            if time_since_activity > check_interval:
+                print(f"No activity for {time_since_activity:.1f} seconds. Sending ping...")
+                
+                # Try to ping the API
+                me_url = f"https://api.telegram.org/bot{api_token}/getMe"
+                try:
+                    ping_response = requests.get(me_url, timeout=30)
+                    if ping_response.status_code == 200:
+                        # Reset activity time to avoid unnecessary pings
+                        update_activity()
+                        print("Ping successful - bot is responsive")
+                    else:
+                        print(f"Ping failed with status {ping_response.status_code}")
+                except Exception as e:
+                    print(f"Error during ping: {e}")
+                    
+                    # If no activity for too long, suggest restart
+                    if time_since_activity > restart_threshold:
+                        print("Bot appears to be unresponsive. Suggesting restart.")
+                        # In a production environment, you could raise a notification here
+            
+            # Sleep before next check
+            time.sleep(60)  # Check every minute
+            
+        except Exception as e:
+            print(f"Error in keepalive thread: {e}")
+            time.sleep(120)  # Wait longer if there was an error
+
 def main():
     """Start the bot."""
     try:
@@ -2943,6 +3045,14 @@ def main():
         watchdog_thread = threading.Thread(target=watchdog)
         watchdog_thread.daemon = True
         watchdog_thread.start()
+        
+        # Get TOKEN from environment or default
+        api_token = os.environ.get('TOKEN', TOKEN)
+        
+        # Start keepalive thread
+        keepalive_thread_obj = threading.Thread(target=keepalive_thread, args=(api_token,))
+        keepalive_thread_obj.daemon = True
+        keepalive_thread_obj.start()
         
         # Update activity timestamp
         update_activity()
