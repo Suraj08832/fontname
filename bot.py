@@ -2345,11 +2345,17 @@ def main():
             # Update activity timestamp
             update_activity()
             
-            # Ensure webhook is deleted to avoid conflicts
+            # Ensure webhook is deleted to avoid conflicts - fixed for asyncio
             print("Removing any existing webhooks...")
             try:
-                # Delete webhook in a blocking way to ensure it's removed before polling starts
-                asyncio.run(application.bot.delete_webhook(drop_pending_updates=True))
+                # Create a new loop instead of using asyncio.run
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                # Run the delete_webhook coroutine
+                loop.run_until_complete(application.bot.delete_webhook(drop_pending_updates=True))
+                loop.close()
                 print("Webhook removed successfully.")
             except Exception as e:
                 print(f"Error removing webhook: {e}")
@@ -2400,16 +2406,19 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         print("CONFLICT ERROR: Webhook conflict or another instance is running")
         
         try:
-            # Try to resolve the conflict by removing the webhook
+            # Try to resolve the conflict by removing the webhook directly through the bot instance
+            # This is safer than creating a new event loop
             await context.bot.delete_webhook(drop_pending_updates=True)
             logging.info("Webhook deleted to resolve conflict")
             
             # Force a restart of the polling mechanism
             print("Will restart polling after clearing conflict...")
             
-            # This will trigger a restart in the main function's exception handler
-            if hasattr(context, 'update_queue'):
-                context.update_queue.put_nowait(None)
+            # Schedule a restart but don't manipulate the event loop directly
+            if hasattr(context, 'application'):
+                context.application.stop()
+                print("Application stopped, restart will be triggered by main function")
+                
         except Exception as e:
             logging.error(f"Failed to resolve conflict: {e}")
     
@@ -2427,14 +2436,15 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
             logging.error(f"Failed to send error message: {e}")
             
     # For serious errors that might require restart
-    if "HTTPError" in tb_string or "Conflict" in tb_string or "Timeout" in tb_string:
-        print("Critical network error detected - may need restart")
-        logging.critical("Critical network error that may require restart")
+    if "HTTPError" in tb_string or "Conflict" in tb_string or "Timeout" in tb_string or "event loop" in tb_string:
+        print("Critical network or event loop error detected - may need restart")
+        logging.critical("Critical network or event loop error that may require restart")
         
         # In extreme cases, exit to let the process be restarted
-        if "409 Conflict" in tb_string and random.random() < 0.5:  # 50% chance to restart on conflict
+        if ("409 Conflict" in tb_string or "event loop" in tb_string) and random.random() < 0.5:  # 50% chance to restart
             print("Exiting process to force restart...")
-            os._exit(1)  # Force immediate exit in case of severe conflict
+            # Use a delayed exit to allow current handlers to complete
+            threading.Timer(5.0, lambda: os._exit(1)).start()
 
 if __name__ == '__main__':
     main() 
