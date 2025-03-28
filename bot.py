@@ -2256,37 +2256,22 @@ def run_http_server():
 
 # Watchdog function to monitor bot activity and restart if needed
 def watchdog():
+    """Monitor the application and restart it if it becomes inactive."""
+    # Check activity every 5 minutes
+    check_interval = 300  # seconds
+    inactive_threshold = 3600  # 1 hour
+    
     last_memory_check = datetime.now()
-    restart_count = 0
     
     while True:
         try:
-            time.sleep(120)  # Check every 2 minutes
+            current_time = datetime.now()
+            # Check if the application has been inactive
+            if (current_time - last_activity_time).total_seconds() > inactive_threshold:
+                logging.info("Application inactive for too long, restarting...")
+                os._exit(1)  # Force exit to allow container orchestration to restart
             
-            # Check for inactivity
-            time_since_activity = (datetime.now() - last_activity_time).total_seconds()
-            if time_since_activity > 300:  # 5 minutes without activity is suspicious
-                restart_count += 1
-                logging.warning(f"Bot seems unresponsive. No activity for {time_since_activity:.1f} seconds. Alert count: {restart_count}")
-                print(f"WATCHDOG ALERT: Bot may be unresponsive. Last activity: {time_since_activity:.1f} seconds ago")
-                
-                # Force a memory cleanup
-                import gc
-                gc.collect()
-                
-                # For severe cases, we might need to exit and let Render restart the service
-                if restart_count >= 3:  # Three consecutive alerts
-                    logging.error("Multiple unresponsiveness alerts. Exiting to force service restart.")
-                    print("CRITICAL: Bot appears completely unresponsive. Exiting to force restart.")
-                    os._exit(1)  # Force exit to trigger Render restart
-                
-                # Update activity to prevent continuous alerts
-                update_activity()
-            else:
-                # Reset restart count if we've seen activity
-                restart_count = 0
-            
-            # Periodically check memory usage (every 15 minutes)
+            # Perform memory check periodically
             if (datetime.now() - last_memory_check).total_seconds() > 900:
                 last_memory_check = datetime.now()
                 gc.collect()  # Explicit garbage collection
@@ -2662,6 +2647,29 @@ def letter_handler(update, chat_id, text):
         except Exception:
             continue
     
+    send_message(chat_id, response)
+
+def alphabet_handler(update, chat_id, text):
+    """Handle /alphabet command."""
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    
+    # Select a random style from available font styles
+    style_num = random.choice(list(STYLE_NAMES.keys()))
+    style_name = STYLE_NAMES[style_num]
+    style_function = FONT_STYLES[style_name]
+    
+    # Apply the style to each letter of the alphabet
+    styled_alphabet = ""
+    for char in alphabet:
+        try:
+            styled_char = style_function(char)
+            styled_alphabet += styled_char
+        except Exception as e:
+            print(f"Error styling character {char} with style {style_name}: {e}")
+            styled_alphabet += char
+    
+    # Create the response message
+    response = f"Alphabet in {style_name.replace('_', ' ')} style (#{style_num}):\n{styled_alphabet}"
     send_message(chat_id, response)
 
 def bio_styles_handler(update, chat_id, text):
