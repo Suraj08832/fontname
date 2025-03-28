@@ -2284,13 +2284,25 @@ def run_bot():
     """Start the bot with polling directly via HTTP API instead of using asyncio."""
     print("Starting bot with synchronous polling...")
     
+    # Get TOKEN from environment
+    api_token = os.environ.get('TOKEN')
+    if not api_token:
+        api_token = TOKEN
+        print("Using hardcoded token (not recommended for production)")
+    
     # Delete webhook manually via direct HTTP request
     print("Removing any existing webhooks via HTTP API...")
-    webhook_url = f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=true"
+    webhook_url = f"https://api.telegram.org/bot{api_token}/deleteWebhook?drop_pending_updates=true"
     try:
         import requests
         response = requests.get(webhook_url)
         print(f"Webhook removal response: {response.status_code} {response.text}")
+        
+        # If unauthorized, print a helpful message
+        if response.status_code == 401:
+            print("ERROR: Bot token appears to be invalid. Please check your TOKEN environment variable.")
+            print("You can set it in Render dashboard under Environment Variables.")
+            return False
     except Exception as e:
         print(f"Error removing webhook: {e}")
     
@@ -2308,11 +2320,17 @@ def run_bot():
     # Start polling loop
     last_update_id = 0
     poll_interval = 1.0  # seconds
+    max_errors = 5
+    consecutive_errors = 0
     
     while True:
         try:
+            # Reset error counter after successful processing
+            if consecutive_errors > 0:
+                consecutive_errors = 0
+            
             # Get updates with long polling
-            updates_url = f"https://api.telegram.org/bot{TOKEN}/getUpdates?offset={last_update_id + 1}&timeout=30"
+            updates_url = f"https://api.telegram.org/bot{api_token}/getUpdates?offset={last_update_id + 1}&timeout=30"
             response = requests.get(updates_url)
             
             if response.status_code == 200:
@@ -2339,63 +2357,67 @@ def run_bot():
                                 answer_callback_query(callback_id)
                                 
                                 # Process callback data
-                                parts = callback_data.split('_')
-                                
-                                if parts[0] == 'name' and len(parts) > 2:
-                                    # Format: name_index_chat_id
-                                    try:
-                                        name_index = int(parts[1])
-                                        user_chat_id = int(parts[2])
-                                        
-                                        if user_chat_id in user_styled_names and name_index < len(user_styled_names[user_chat_id]):
-                                            styled_name = user_styled_names[user_chat_id][name_index]
-                                            send_message(chat_id, styled_name)
-                                        else:
-                                            send_message(chat_id, "Style not found. Please try again.")
-                                    except Exception as e:
-                                        print(f"Error processing name callback: {e}")
-                                        send_message(chat_id, "Error processing request. Please try again.")
-                                
-                                elif parts[0] == 'style' and len(parts) > 2:
-                                    # Format: style_style_num_chat_id
-                                    try:
-                                        style_num = int(parts[1])
-                                        user_chat_id = int(parts[2])
-                                        
-                                        if style_num in STYLE_NAMES:
-                                            # Get the latest message from this user to extract the name
-                                            if 'reply_to_message' in callback_query['message']:
-                                                original_text = callback_query['message']['reply_to_message'].get('text', '')
-                                                
-                                                # Try to extract name from original message
-                                                if ' ' in original_text:
-                                                    name = original_text.split(' ', 1)[1]
-                                                else:
-                                                    name = "Example"
-                                            else:
-                                                name = "Example"  # Default name if we can't find the original
+                                try:
+                                    parts = callback_data.split('_')
+                                    
+                                    if parts[0] == 'name' and len(parts) > 2:
+                                        # Format: name_index_chat_id
+                                        try:
+                                            name_index = int(parts[1])
+                                            user_chat_id = int(parts[2])
                                             
-                                            # Get the style name and function
-                                            style_name = STYLE_NAMES[style_num]
-                                            style_func = FONT_STYLES[style_name]
-                                            
-                                            # Apply the style
-                                            try:
-                                                styled_name = ''.join(style_func(c) for c in name)
+                                            if user_chat_id in user_styled_names and name_index < len(user_styled_names[user_chat_id]):
+                                                styled_name = user_styled_names[user_chat_id][name_index]
                                                 send_message(chat_id, styled_name)
-                                            except Exception as e:
-                                                print(f"Error applying style {style_name}: {e}")
-                                                send_message(chat_id, f"Error applying style {style_name}. Please try another style.")
-                                        
-                                        # Fallback to user_styled_names if available
-                                        elif user_chat_id in user_styled_names and 0 <= style_num - 1 < len(user_styled_names[user_chat_id]):
-                                            styled_name = user_styled_names[user_chat_id][style_num - 1]
-                                            send_message(chat_id, styled_name)
-                                        else:
-                                            send_message(chat_id, "Style not found. Please try again.")
-                                    except Exception as e:
-                                        print(f"Error processing style callback: {e}")
-                                        send_message(chat_id, "Error processing request. Please try again.")
+                                            else:
+                                                send_message(chat_id, "Style not found. Please try again.")
+                                        except Exception as e:
+                                            print(f"Error processing name callback: {e}")
+                                            send_message(chat_id, "Error processing request. Please try again.")
+                                    
+                                    elif parts[0] == 'style' and len(parts) > 2:
+                                        # Format: style_style_num_chat_id
+                                        try:
+                                            style_num = int(parts[1])
+                                            user_chat_id = int(parts[2])
+                                            
+                                            if style_num in STYLE_NAMES:
+                                                # Get the latest message from this user to extract the name
+                                                if 'reply_to_message' in callback_query['message']:
+                                                    original_text = callback_query['message']['reply_to_message'].get('text', '')
+                                                    
+                                                    # Try to extract name from original message
+                                                    if ' ' in original_text:
+                                                        name = original_text.split(' ', 1)[1]
+                                                    else:
+                                                        name = "Example"
+                                                else:
+                                                    name = "Example"  # Default name if we can't find the original
+                                                
+                                                # Get the style name and function
+                                                style_name = STYLE_NAMES[style_num]
+                                                style_func = FONT_STYLES[style_name]
+                                                
+                                                # Apply the style
+                                                try:
+                                                    styled_name = ''.join(style_func(c) for c in name)
+                                                    send_message(chat_id, styled_name)
+                                                except Exception as e:
+                                                    print(f"Error applying style {style_name}: {e}")
+                                                    send_message(chat_id, f"Error applying style {style_name}. Please try another style.")
+                                            
+                                            # Fallback to user_styled_names if available
+                                            elif user_chat_id in user_styled_names and 0 <= style_num - 1 < len(user_styled_names[user_chat_id]):
+                                                styled_name = user_styled_names[user_chat_id][style_num - 1]
+                                                send_message(chat_id, styled_name)
+                                            else:
+                                                send_message(chat_id, "Style not found. Please try again.")
+                                        except Exception as e:
+                                            print(f"Error processing style callback: {e}")
+                                            send_message(chat_id, "Error processing request. Please try again.")
+                                except Exception as e:
+                                    print(f"Error processing callback query: {e}")
+                                    send_message(chat_id, "Sorry, there was an error processing your request.")
                             
                             # Check if it's a message with a command
                             elif 'message' in update and 'text' in update['message']:
@@ -2410,14 +2432,28 @@ def run_bot():
                                             handler(update, chat_id, text)
                                         except Exception as e:
                                             print(f"Error in handler {command}: {e}")
+                                            traceback.print_exc()
                                             send_message(chat_id, "Sorry, there was an error processing your request.")
+            elif response.status_code == 401:
+                print("ERROR: Invalid bot token. Check your TOKEN environment variable.")
+                return False
             
             # Sleep before next poll
             time.sleep(poll_interval)
             
         except Exception as e:
-            print(f"Error in polling: {e}")
+            consecutive_errors += 1
+            print(f"Error in polling (attempt {consecutive_errors}/{max_errors}): {e}")
+            traceback.print_exc()
+            
+            # If we've had too many consecutive errors, exit
+            if consecutive_errors >= max_errors:
+                print("Too many consecutive errors. Exiting...")
+                return False
+                
             time.sleep(poll_interval * 2)  # Wait longer after an error
+    
+    return True
 
 def send_message(chat_id, text, reply_markup=None):
     """Send a message using the Telegram Bot API directly."""
@@ -2425,7 +2461,7 @@ def send_message(chat_id, text, reply_markup=None):
     data = {
         'chat_id': chat_id,
         'text': text,
-        'parse_mode': 'HTML'
+        'parse_mode': 'HTML'  # Using HTML parsing is more reliable than Markdown
     }
     
     if reply_markup:
@@ -2434,10 +2470,50 @@ def send_message(chat_id, text, reply_markup=None):
     try:
         import requests
         response = requests.post(url, json=data)
-        return response.json()
+        result = response.json()
+        if not result.get('ok'):
+            print(f"Error sending message: {result.get('description')}")
+            
+            # Handle "message too long" error
+            if "message is too long" in str(result.get('description', '')).lower():
+                # Split message and send in parts
+                chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+                for chunk in chunks:
+                    send_message(chat_id, chunk, None if chunk != chunks[-1] else reply_markup)
+                return result
+                
+        return result
     except Exception as e:
         print(f"Error sending message: {e}")
+        traceback.print_exc()
         return None
+
+def create_inline_keyboard(buttons, rows_of=2):
+    """
+    Create an inline keyboard from a list of (text, callback_data) tuples.
+    
+    Args:
+        buttons: List of (text, callback_data) tuples
+        rows_of: Number of buttons per row
+    
+    Returns:
+        Dict with inline_keyboard structure for Telegram
+    """
+    keyboard = []
+    row = []
+    
+    for i, (text, callback_data) in enumerate(buttons):
+        # For longer text, truncate it to keep buttons reasonable
+        display_text = text[:20] + "..." if len(text) > 20 else text
+        
+        row.append({"text": display_text, "callback_data": callback_data})
+        
+        # Start a new row after every rows_of buttons or at the end
+        if (i + 1) % rows_of == 0 or i == len(buttons) - 1:
+            keyboard.append(row)
+            row = []
+    
+    return {"inline_keyboard": keyboard}
 
 def answer_callback_query(callback_query_id, text=None, show_alert=False):
     """Answer a callback query."""
@@ -2455,6 +2531,7 @@ def answer_callback_query(callback_query_id, text=None, show_alert=False):
         return response.json()
     except Exception as e:
         print(f"Error answering callback query: {e}")
+        traceback.print_exc()
         return None
 
 # Dictionary to store styled names for users
@@ -2472,76 +2549,40 @@ def fancy_handler(update, chat_id, text):
     # Generate multiple fancy names
     fancy_names = []
     
-    # List of bio style functions
+    # Select 20 different bio styles from 50 available styles
     bio_styles = [
-        stylish_bio_accent,
-        stylish_bio_butterfly,
-        stylish_bio_premium,
-        stylish_bio_special,
-        stylish_bio_infinity,
-        stylish_bio_crystal,
-        stylish_bio_royal,
-        stylish_bio_angel,
-        stylish_bio_diamond_crown,
-        stylish_bio_shadow,
-        stylish_bio_clone,
-        stylish_bio_sanatan,
-        stylish_bio_anjali,
-        stylish_bio_misty,
-        fancy_stylish_bio1,
-        fancy_stylish_bio2,
-        fancy_stylish_bio3,
-        fancy_stylish_bio4,
-        fancy_stylish_bio5,
-        fancy_stylish_bio6
+        stylish_bio_accent, stylish_bio_butterfly, stylish_bio_premium, stylish_bio_special,
+        stylish_bio_infinity, stylish_bio_crystal, stylish_bio_royal, stylish_bio_angel,
+        stylish_bio_diamond_crown, stylish_bio_shadow, stylish_bio_heart, stylish_bio_clone,
+        stylish_bio_sanatan, stylish_bio_anjali, stylish_bio_misty, stylish_bio_joker,
+        stylish_bio_prashant, stylish_bio_innocent, stylish_bio_isi_u, stylish_bio_miss
     ]
     
-    # Generate styles
-    for i, style_func in enumerate(bio_styles):
+    # Apply each style to the name and store the styled names
+    for style_func in bio_styles:
         try:
             styled_name = style_func(name)
             fancy_names.append(styled_name)
         except Exception as e:
-            print(f"Error generating style {i}: {e}")
-            continue
+            print(f"Error applying style {style_func.__name__}: {e}")
     
-    # Store the fancy names in user_data dictionary
+    # Store the styled names for this user for later retrieval
     user_styled_names[chat_id] = fancy_names
     
-    # Create inline keyboard with buttons
-    keyboard = []
-    current_row = []
+    # Create buttons for each styled name
+    buttons = []
+    for i, styled_name in enumerate(fancy_names):
+        # Create a preview (truncate for display)
+        preview = styled_name[:15] + "..." if len(styled_name) > 15 else styled_name
+        buttons.append((preview, f"name_{i}_{chat_id}"))
     
-    for i, fancy_text in enumerate(fancy_names):
-        # Create a button for this fancy name
-        display_text = fancy_text[:20]  # Truncate to first 20 chars for display
-        if len(fancy_text) > 20:
-            display_text += "..."
-            
-        button = {
-            "text": f"{i+1}. {display_text}",
-            "callback_data": f"name_{i}_{chat_id}"
-        }
-        
-        # Add to current row
-        current_row.append(button)
-        
-        # If we have 2 buttons or this is the last name, add the row to keyboard
-        if len(current_row) == 2 or i == len(fancy_names) - 1:
-            keyboard.append(current_row)
-            current_row = []
+    # Create the inline keyboard
+    reply_markup = create_inline_keyboard(buttons, rows_of=2)
     
-    # Add any remaining buttons
-    if current_row:
-        keyboard.append(current_row)
-    
-    reply_markup = {
-        "inline_keyboard": keyboard
-    }
-    
+    # Send the message with the inline keyboard
     send_message(
         chat_id,
-        f"𝗦𝗧𝗬𝗟𝗜𝗦𝗛 𝗡𝗔𝗠𝗘 🇮🇳🍁 for '{name}':",
+        f"Choose a fancy style for '{name}':",
         reply_markup=reply_markup
     )
 
@@ -2554,52 +2595,33 @@ def name_fonts_handler(update, chat_id, text):
     
     name = parts[1]
     
-    # Create inline keyboard with buttons
-    keyboard = []
-    current_row = []
-    styled_names = []
+    # Generate styled names for all available font styles
+    buttons = []
     
     for style_num, style_name in STYLE_NAMES.items():
         try:
+            # Get the style function
             style_func = FONT_STYLES[style_name]
+            
+            # Generate the styled name
             styled_name = ''.join(style_func(c) for c in name)
-            styled_names.append(styled_name)
             
-            # Create a button for this style
-            # Limit displayed text to 20 chars for button
-            display_text = styled_name[:17] + "..." if len(styled_name) > 20 else styled_name
+            # Create a preview for the button
+            display_name = styled_name[:15] + "..." if len(styled_name) > 15 else styled_name
+            button_text = f"{style_num}. {display_name}"
             
-            button = {
-                "text": f"{style_num}. {display_text}",
-                "callback_data": f"style_{style_num}_{chat_id}"
-            }
-            
-            # Add to current row
-            current_row.append(button)
-            
-            # If we have 2 buttons or this is the last style, add the row to keyboard
-            if len(current_row) == 2 or style_num == max(STYLE_NAMES.keys()):
-                keyboard.append(current_row)
-                current_row = []
-                
+            # Add to buttons list
+            buttons.append((button_text, f"style_{style_num}_{chat_id}"))
         except Exception as e:
-            print(f"Error with style {style_name}: {e}")
-            continue
+            print(f"Error generating style {style_name}: {e}")
     
-    # Add any remaining buttons
-    if current_row:
-        keyboard.append(current_row)
+    # Create inline keyboard
+    reply_markup = create_inline_keyboard(buttons, rows_of=2)
     
-    # Store the styled names in user_data dictionary
-    user_styled_names[chat_id] = styled_names
-    
-    reply_markup = {
-        "inline_keyboard": keyboard
-    }
-    
+    # Send message with inline keyboard
     send_message(
         chat_id,
-        f"Choose a style for '{name}':",
+        f"Choose a font style for '{name}':",
         reply_markup=reply_markup
     )
 
@@ -2727,7 +2749,12 @@ def main():
         update_activity()
         
         # Start the bot with direct polling
-        run_bot()
+        success = run_bot()
+        
+        # If run_bot returns False, there was a critical error
+        if not success:
+            logging.error("Bot polling returned with error. Exiting.")
+            sys.exit(1)
         
     except Exception as e:
         logging.error(f"Critical error in main function: {str(e)}", exc_info=True)
