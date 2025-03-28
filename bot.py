@@ -3034,6 +3034,9 @@ def main():
     try:
         # Get TOKEN from environment or default
         api_token = os.environ.get('TOKEN', TOKEN)
+        if not api_token:
+            raise ValueError("No API token found in environment variables or default TOKEN")
+        print("API token loaded successfully")
         
         # Start HTTP server in a separate thread for Render
         print("\nStarting HTTP server...")
@@ -3083,7 +3086,12 @@ def main():
         print("- /name_fonts - Show name in all styles")
         print("- /bio_styles - Show bio styles")
         
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        # Start polling with error handling
+        try:
+            application.run_polling(allowed_updates=Update.ALL_TYPES)
+        except Exception as e:
+            print(f"Error during polling: {str(e)}")
+            raise
         
     except Exception as e:
         print(f"\nError in main: {str(e)}")

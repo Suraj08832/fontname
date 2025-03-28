@@ -35,6 +35,16 @@ check_bot_status() {
     fi
 }
 
+# Function to get bot logs
+get_bot_logs() {
+    if [ -f bot.log ]; then
+        echo "=== Bot Logs ==="
+        cat bot.log
+    else
+        echo "No bot.log file found"
+    fi
+}
+
 # Restart loop
 while [ $restart_count -lt $MAX_RESTARTS ]; do
     current_time=$(date +%s)
@@ -59,12 +69,12 @@ while [ $restart_count -lt $MAX_RESTARTS ]; do
     # Check if bot is running
     if check_bot_status; then
         echo "Bot started successfully with PID: $BOT_PID"
-        echo "Bot logs:"
-        tail -n 20 bot.log
+        echo "Waiting for logs to be generated..."
+        sleep 2
+        get_bot_logs
     else
         echo "Bot failed to start properly"
-        echo "Last 20 lines of bot log:"
-        tail -n 20 bot.log
+        get_bot_logs
     fi
     
     # Update restart count and time
@@ -77,8 +87,7 @@ while [ $restart_count -lt $MAX_RESTARTS ]; do
         sleep 10
     else
         echo "Maximum restart attempts reached. Please check logs for errors."
-        echo "Final bot log:"
-        cat bot.log
+        get_bot_logs
         exit 1
     fi
 done
