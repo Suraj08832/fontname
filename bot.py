@@ -4,12 +4,17 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from styles.font_styles import generate_fancy_name, generate_example_styles
 from handlers.button_handler import button_callback
 from utils.helpers import setup_logging, safe_execute, create_inline_keyboard, validate_text
+from aiohttp import web
 
 # Setup logging
 logger = setup_logging()
 
 # Bot token
 TOKEN = os.getenv('BOT_TOKEN')
+
+# Health check handler
+async def health_check(request):
+    return web.Response(text="OK")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_message = """
@@ -109,17 +114,23 @@ async def bio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Sorry, there was an error processing your request")
 
 def main():
-    application = Application.builder().token(TOKEN).build()
+    # Create web application
+    app = web.Application()
+    app.router.add_get('/health', health_check)
+    
+    # Create bot application
+    bot_app = Application.builder().token(TOKEN).build()
     
     # Add handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("name", name_command))
-    application.add_handler(CommandHandler("bio", bio_command))
-    application.add_handler(CallbackQueryHandler(button_callback))
+    bot_app.add_handler(CommandHandler("start", start))
+    bot_app.add_handler(CommandHandler("help", help_command))
+    bot_app.add_handler(CommandHandler("name", name_command))
+    bot_app.add_handler(CommandHandler("bio", bio_command))
+    bot_app.add_handler(CallbackQueryHandler(button_callback))
     
-    # Start the bot
-    application.run_polling()
+    # Start both web and bot
+    web.run_app(app, port=int(os.getenv('PORT', 8080)))
+    bot_app.run_polling()
 
 if __name__ == '__main__':
     main() 
